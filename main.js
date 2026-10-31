@@ -182,9 +182,9 @@ function buildLevel() {
     stones(z0) {                                     // hop across a line of small islands
       let z = z0; const xs = [0, 1.3, -1.3, 1.0, -1.0, 0];
       xs.forEach((x, i) => {
-        platform(x, z, z - 3, 3.4); if (i === 2) crate(x, 0, z - 1.5, 'normal', 5);
-        if (i < xs.length - 1) fruit((x + xs[i + 1]) / 2, 2.3, z - 3 - 1.3);
-        z -= i < xs.length - 1 ? 5.6 : 3;
+        platform(x, z, z - 4.2, 3.6); if (i === 2) crate(x, 0, z - 2.1, 'normal', 5);
+        if (i < xs.length - 1) fruit((x + xs[i + 1]) / 2, 2.3, z - 4.2 - 1.4);
+        z -= i < xs.length - 1 ? 7 : 4.2;
       });
       return z;
     },
