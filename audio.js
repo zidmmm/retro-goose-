@@ -98,6 +98,14 @@ const SFX = {
   portal: () => { tone({ f: 200, f2: 1400, dur: 0.9, type: 'sine', vol: 0.22 }); arp([72, 76, 79, 84, 88, 91], 0.08, { dur: 0.35, type: 'triangle', vol: 0.15, delay: 0.3 }); },
   victory: () => { arp([72, 72, 72, 76, 79, 84], 0.13, { dur: 0.2, type: 'square', vol: 0.2 }); [72, 76, 79, 84].forEach(n => tone({ f: midi(n), dur: 1.2, type: 'triangle', vol: 0.16, delay: 0.85 })); },
   gameover: () => arp([69, 65, 62, 57], 0.28, { dur: 0.5, type: 'sawtooth', vol: 0.17 }),
+  zap: () => { tone({ f: 1100, f2: 220, dur: 0.22, type: 'sawtooth', vol: 0.18 }); noise({ dur: 0.18, vol: 0.14, f0: 5000, f1: 1500, type: 'highpass' }); },
+  lever: () => { tone({ f: 160, f2: 90, dur: 0.14, type: 'square', vol: 0.22 }); noise({ dur: 0.12, vol: 0.3, f0: 2500, f1: 600, q: 4, type: 'bandpass' }); tone({ f: 70, dur: 0.2, type: 'sine', vol: 0.3, delay: 0.1 }); },
+  alarm: () => { for (let i = 0; i < 6; i++) tone({ f: i % 2 ? 640 : 900, dur: 0.17, type: 'square', vol: 0.15, delay: i * 0.2 }); },
+  padRise: () => { tone({ f: 120, f2: 420, dur: 0.9, type: 'sine', vol: 0.25 }); noise({ dur: 0.9, vol: 0.18, f0: 200, f1: 1400, type: 'bandpass', q: 1 }); },
+  padCollapse: () => { noise({ dur: 0.5, vol: 0.35, f0: 1500, f1: 80 }); tone({ f: 300, f2: 50, dur: 0.5, type: 'sawtooth', vol: 0.18 }); },
+  trapdoor: () => { noise({ dur: 1.3, vol: 0.7, f0: 600, f1: 50 }); tone({ f: 75, f2: 30, dur: 1.2, type: 'sine', vol: 0.55 }); tone({ f: 140, f2: 60, dur: 0.6, type: 'square', vol: 0.12 }); },
+  boulderHit: () => { SFX.boom(); tone({ f: 200, f2: 40, dur: 0.5, type: 'sawtooth', vol: 0.25 }); },
+  laugh: () => { for (let i = 0; i < 4; i++) tone({ f: 420 - i * 35, f2: 260 - i * 30, dur: 0.14, type: 'square', vol: 0.14, delay: i * 0.17, vibrato: 14 }); },
   intro: () => { tone({ f: 70, f2: 50, dur: 0.9, type: 'sawtooth', vol: 0.3 }); noise({ dur: 0.9, vol: 0.2, f0: 200, f1: 900, type: 'lowpass' }); },
 };
 export function sfx(name) { if (!ready() || muted) return; const f = SFX[name]; if (f) f(); }
@@ -134,6 +142,30 @@ const THEMES = {
     leadType: 'sawtooth', leadVol: 0.05,
   },
 };
+THEMES.chase = {                 // boulder chase: fast, relentless A minor
+  bpm: 168,
+  bass: [45, 41, 43, 40].map(r => bassBar(r, true)),
+  lead: [
+    [81, R, 79, R, 76, R, 79, R, 81, R, 84, R, 81, R, 79, R],
+    [77, R, 76, R, 72, R, 76, R, 77, R, 81, R, 77, R, 76, R],
+    [79, R, 76, R, 74, R, 76, R, 79, R, 83, R, 79, R, 76, R],
+    [76, R, 79, R, 83, R, 79, R, 76, R, 80, R, 83, R, 88, R],
+  ],
+  kick: [1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0], hat: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  leadType: 'square', leadVol: 0.06,
+};
+THEMES.cortex = {                // final boss: dark, menacing, with a chromatic bass crawl
+  bpm: 140,
+  bass: [38, 38, 37, 36].map(r => bassBar(r, true)),
+  lead: [
+    [74, R, R, 73, 74, R, 77, R, 74, R, R, 73, 74, R, 70, R],
+    [74, R, R, 73, 74, R, 77, R, 80, R, 77, R, 74, R, 73, R],
+    [73, R, R, 72, 73, R, 76, R, 73, R, R, 72, 73, R, 69, R],
+    [72, R, 75, R, 78, R, 75, R, 72, R, 75, R, 79, R, 78, R],
+  ],
+  kick: [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], hat: [0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],
+  leadType: 'sawtooth', leadVol: 0.055,
+};
 function playStep(th, s, t) {
   const bar = (s >> 4) % 4, i = s & 15, d = 60 / th.bpm / 4;
   const b = th.bass[bar][i], l = th.lead[bar][i];
@@ -165,4 +197,18 @@ export function status() {
   let rms = 0;
   if (meter) { const d = new Float32Array(meter.fftSize); meter.getFloatTimeDomainData(d); rms = Math.sqrt(d.reduce((s, v) => s + v * v, 0) / d.length); }
   return { state: ctx && ctx.state, theme, step, muted, rms };
+}
+
+// continuous low rumble (the boulder): 0 = off .. 1 = right behind you
+let rumble = null;
+export function setRumble(v) {
+  if (!ready()) return;
+  if (!rumble) {
+    if (v <= 0) return;
+    const s = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    s.buffer = noiseBuf; s.loop = true; f.type = 'lowpass'; f.frequency.value = 150; g.gain.value = 0;
+    s.connect(f).connect(g).connect(sfxBus); s.start(); rumble = { g, f };
+  }
+  rumble.g.gain.setTargetAtTime(v * 0.7, ctx.currentTime, 0.15);
+  rumble.f.frequency.setTargetAtTime(100 + v * 160, ctx.currentTime, 0.2);
 }

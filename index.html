@@ -34,6 +34,7 @@
   #bosshp i{display:block;width:clamp(26px,6vw,44px);height:18px;background:linear-gradient(#ff7a6b,#c62828);border:3px solid #fff;border-radius:3px;transition:background .25s,opacity .25s}
   #bosshp i.lost{background:#1d1d1d;border-color:#777;opacity:.65}
   #muteBtn{position:fixed;z-index:20;top:calc(8px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:rgba(20,30,40,.55);color:#fff;font-size:22px;line-height:1;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer}
+  #danger{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 110px 36px rgba(255,40,20,.85)}   /* red edges when the boulder is close */
   #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s}
   #fade.on{opacity:1}
   #toast{position:fixed;top:26%;left:0;right:0;text-align:center;font-size:44px;font-weight:bold;color:#ffd54f;text-shadow:3px 3px 0 #7a2e00;opacity:0;transform:scale(.6);transition:opacity .15s,transform .15s;pointer-events:none}
@@ -44,6 +45,7 @@
 <body>
 <div id="hud"><span id="lives"></span><span id="fruit"></span><span id="crates"></span><span id="aku" style="color:#ffd54f"></span></div>
 <div id="bossbar" hidden><div id="bossname">RIPPER ROO</div><div id="bosshp"></div></div>
+<div id="danger"></div>
 <div id="fade"></div>
 <button id="muteBtn" type="button" aria-label="Sound on or off">&#128266;</button>
 <div id="toast"></div>

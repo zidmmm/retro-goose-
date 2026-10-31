@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { makeAnimator } from './animation.js';
-import { sfx, music, unlock as unlockEngine, blip, isMuted, setMuted, status as audioStatus } from './audio.js';
+import { sfx, music, unlock as unlockEngine, blip, isMuted, setMuted, setRumble, status as audioStatus } from './audio.js';
 import { makeMaterials, tileUV, WUMPA_URL } from './textures.js';
 
 // ---------- tuning ----------
@@ -15,6 +15,9 @@ const INVINCIBLE_TIME = 8;
 const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
 const BOSS_HP = 5;                                   // Ripper Roo's lives (shown on the health bar)
 const ARENA = { z: LEVEL_END - 200, w: 20, d: 26 };  // boss arena: front edge z, width, depth (the player enters at the front, Ripper Roo is at the far end)
+const CHASE = { z0: 120, len: 700, R: 3.4 };           // level 2: a boulder chase that runs toward +z (toward the camera) from here
+const ARENA2 = { z: 1100, w: 22, d: 26, back: 14 };    // Dr. Neo Cortex's lab: front edge z, width, depth (the player enters at the front, Cortex hovers at the far end)
+const CORTEX_HP = 6;                                    // 3 hits on solid floor, then he pulls the lever (stage two), then 3 more over the pit
 const WORLD_END = ARENA.z - ARENA.d - 60;            // scenery (floor, plants) extends this far
 
 // ---------- renderer ----------
@@ -47,6 +50,10 @@ const M = { ...T, spike: mat(0xcfd8dc), step: T.grass, portal: new THREE.MeshBas
 const solids = [];   // { mesh, min:Vector3, max:Vector3, vel?, crate? }
 const crates = [], fruits = [], enemies = [], spikes = [], movers = [];
 let finish;
+const chase = { active: false, boulder: null, finish: null, endZ: 0, stun: 0, t: 0, startZ: 0 };
+const cortex = { active: false, hp: CORTEX_HP, stage: 1, intro: 0, stun: 0, dead: 0, t: 0, act: null, idleT: 1, flash: 0, laugh: 0, recoil: 0, seq: null, seqPending: false,
+  floorOpen: 0, wantOpen: false, padTimer: 7, sweep: 0, shootT: 1.5, rootX: 0, root: new THREE.Group(), platform: null, lever: null, floor: [], pads: [], blasts: [], model: null, anim: null, gun: null };
+function makeRng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 const LAYOUT = [];   // [kind, startZ, endZ] per generated section, handy for debugging
 
 function addBox(x, y, z, w, h, d, material, extra = {}) {
@@ -115,6 +122,83 @@ function spike(x, y, z) {
 }
 
 // boss arena: a walled stone courtyard far past the end of the level
+// ---- level 2: the boulder-chase track (runs toward +z, so Crash runs at the camera) ----
+function buildChase() {
+  const rng = makeRng(31337), rr = (a, b) => a + rng() * (b - a), z0 = CHASE.z0;
+  platform(0, z0 - 45, z0 + 14, 8); walls(z0 - 45, z0 + 14, 4, 3);           // start pad (the boulder waits behind you)
+  let n = 0;
+  const cp = zz => { if (n % 4 === 0) crate(0, 0, zz, 'checkpoint'); };
+  const aku = (zz, p = 0.5) => { if (rng() < p) crate(rng() < 0.5 ? -2.6 : 2.6, 0, zz, 'aku'); };
+  const life = zz => { if (rng() < 0.3) crate(0, 0, zz, 'life'); };
+  const SEC = {
+    straight(z) { const len = rr(36, 48); platform(0, z, z + len, 8); walls(z, z + len, 4, 2.8); cp(z + 2); crate(-2.6, 0, z + 10, 'normal'); crate(2.6, 0, z + 10, 'normal'); aku(z + 18); life(z + len - 6); fruitLine(0, 0.9, z + 4, z + len - 3, 8); return z + len; },
+    hurdles(z) { const len = 40; platform(0, z, z + len, 8); walls(z, z + len, 4, 2.8); cp(z + 2); for (const d of [11, 19, 27]) { addBox(0, 0.5, z + d, 8, 1, 0.8, M.wall, { wall: true }); fruit(0, 2.6, z + d); } fruitLine(0, 0.9, z + 4, z + 8, 3); return z + len; },
+    spikes(z) { const len = 38; platform(0, z, z + len, 9); walls(z, z + len, 4.5, 2.8); cp(z + 2); for (let k = 0; k < 3; k++) { const free = [-3, 0, 3][(rng() * 3) | 0], zz = z + 9 + k * 10; for (const x of [-3, 0, 3]) if (x !== free) spike(x, 0, zz); fruit(free, 1.1, zz); } return z + len; },
+    gaps(z) { let zz = z; for (let k = 0; k < 3; k++) { platform(0, zz, zz + 12, 7); fruitLine(0, 0.9, zz + 2, zz + 10, 3); if (k < 2) fruit(0, 2.4, zz + 13.6); zz += 15.2; } return zz - 3.2; },
+    bridge(z) { const len = 30; platform(0, z, z + len, 3, 0, M.dirt); cp(z + 2); for (const d of [9, 20]) { spike(0, 0, z + d); fruit(0, 2.4, z + d); } return z + len; },
+    enemies(z) { const len = 36; platform(0, z, z + len, 9); walls(z, z + len, 4.5, 2.8); cp(z + 2); for (const d of [9, 18, 27]) enemy(0, 0, z + d, 'x', 3.5); fruitLine(0, 0.9, z + 3, z + len - 3, 7); return z + len; },
+  };
+  const order = Object.keys(SEC);
+  let z = z0 + 17, prev = '';                                              // every section starts 3 past the previous one (a jumpable gap)
+  while (z < z0 + CHASE.len) { n++; let k; do { k = order[(rng() * order.length) | 0]; } while (k === prev); prev = k; z = SEC[k](z) + 3; }
+  platform(0, z, z + 26, 8); walls(z, z + 26, 4, 3); crate(0, 0, z + 2, 'checkpoint');
+  chase.endZ = z + 26;
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.25, 12, 32), M.portal); ring.position.set(0, 2, z + 20); scene.add(ring);
+  ring.add(new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), M.portal)); chase.finish = ring;
+  // the boulder itself
+  const b = new THREE.Mesh(new THREE.IcosahedronGeometry(1, 2), new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0xcdbca0, flatShading: true }));
+  b.scale.setScalar(CHASE.R); b.visible = false; scene.add(b); chase.boulder = b;
+}
+// ---- the final boss's lab: a trap-door floor with four hidden pads, and Dr. Neo Cortex's hover platform with a lever ----
+function buildArena2() {
+  const z0 = ARENA2.z, d = ARENA2.d, w = ARENA2.w, back = ARENA2.back, len = back + d, zc = z0 + (back - d) / 2;
+  cortex.floor = [-1, 1].map(s => { const f = addBox(s * w / 4, -1, zc, w / 2, 2, len, M.grass); f.dynamic = true; f.side = s; return f; });   // the two trap-door halves
+  walls(z0 + back, z0 - d, w / 2, 5);
+  addBox(0, 1.75, z0 - d - 0.6, w + 2.4, 7.5, 1.2, M.wall, { wall: true });
+  addBox(0, 1.75, z0 + back + 0.6, w + 2.4, 7.5, 1.2, M.wall, { wall: true });
+  addBox(0, 3, z0 + 2, w, 6, 1, M.wall, { wall: true }).mesh.visible = false;               // invisible start line (keeps the camera inside)
+  const pit = new THREE.Mesh(new THREE.PlaneGeometry(w + 2, len), new THREE.MeshBasicMaterial({ color: 0x5a1a12 }));
+  pit.rotation.x = -Math.PI / 2; pit.position.set(0, -11.5, zc); scene.add(pit);
+  const H = 14;                                                                             // the four pads: tall pillars hidden under the floor until the lever is pulled
+  cortex.pads = [[-4.2, z0 - 10], [4.2, z0 - 10], [-4.2, z0 - 17.4], [4.2, z0 - 17.4]].map(([x, z]) => {
+    const s = addBox(x, -0.5 - H / 2, z, 4.2, H, 4.2, M.moving); s.dynamic = true; s.broken = false;
+    const plate = new THREE.Mesh(new THREE.BoxGeometry(3.4, 0.1, 3.4), new THREE.MeshBasicMaterial({ color: 0x66ffee })); plate.position.y = H / 2 + 0.05; s.mesh.add(plate);
+    s.pad = { x, z, top: -0.5, state: 'hidden', t: 0, H, plate };
+    return s;
+  });
+  // Cortex's hover platform (with a lever on the left end) and the holder his model stands in
+  const hp = new THREE.Group(), zp = z0 - d + 3.5; hp.position.set(0, 5.6, zp);
+  const metal = new THREE.MeshLambertMaterial({ map: M.moving[0].map, color: 0x8899aa });
+  hp.add(new THREE.Mesh(new THREE.BoxGeometry(7, 0.9, 4.6), metal));
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(2.6, 24), new THREE.MeshBasicMaterial({ color: 0x55ddff, transparent: true, opacity: 0.55 })); glow.rotation.x = Math.PI / 2; glow.position.y = -0.5; hp.add(glow);
+  const lev = new THREE.Group(); lev.position.set(-2.9, 0.45, 0.4);
+  const post = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 1.5, 8), new THREE.MeshLambertMaterial({ color: 0x555555 })); post.position.y = 0.75; lev.add(post);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.22, 10, 8), new THREE.MeshLambertMaterial({ color: 0xdd2222, emissive: 0x551111 })); knob.position.y = 1.55; lev.add(knob);
+  hp.add(lev); cortex.lever = lev; lev.rotation.z = -0.6;
+  cortex.root.position.set(0, 0.45, 0); hp.add(cortex.root);
+  scene.add(hp); cortex.platform = hp; cortex.zp = zp;
+  crate(-7, 0, z0 - 3, 'aku'); crate(7, 0, z0 - 3, 'life');
+}
+// plants, canopy floor and bushes for the two new regions
+function stageScenery() {
+  const zA = CHASE.z0 - 150, zB = ARENA2.z + 80, len = zB - zA;
+  const m2 = M.water.clone(); m2.map = M.water.map.clone(); m2.map.repeat.set(120, len / 2.4); m2.map.needsUpdate = true;
+  const plane = new THREE.Mesh(new THREE.PlaneGeometry(500, len), m2); plane.rotation.x = -Math.PI / 2; plane.position.set(0, -9, (zA + zB) / 2); scene.add(plane);
+  const inLab = (x, z) => Math.abs(x) < ARENA2.w / 2 + 2.5 && z > ARENA2.z - ARENA2.d - 3 && z < ARENA2.z + ARENA2.back + 3;
+  for (let z = CHASE.z0 - 45; z < chase.endZ + 10; z += 3.2) for (let k = 0; k < 3; k++) {   // bush canopy under the chase track
+    const bs = 3.5 + Math.random() * 3, b = new THREE.Sprite(M.tree); b.scale.set(bs * 1.15, bs, 1); b.position.set((Math.random() - 0.5) * 34, -3 - Math.random() * 5, z + Math.random() * 3); scene.add(b);
+  }
+  for (const [za, zb] of [[CHASE.z0 - 80, chase.endZ + 60], [ARENA2.z - 60, ARENA2.z + 40]]) {
+    const n = Math.round((zb - za) * 0.9);
+    for (let i = 0; i < n; i++) {
+      const side = Math.random() < 0.5 ? -1 : 1, z = za + Math.random() * (zb - za), x = side * (6.5 + Math.random() * 16);
+      if (inLab(x, z)) continue;
+      const h = 5 + Math.random() * 6, t = new THREE.Sprite(M.tree); t.scale.set(h * 1.15, h, 1); t.position.set(x, h / 2 - 1.8, z); scene.add(t);
+      if (i % 3 === 0) { const bx = side * (5.3 + Math.random() * 2.5); if (inLab(bx, z)) continue; const bs = 2 + Math.random() * 1.8, bu = new THREE.Sprite(M.tree); bu.scale.set(bs * 1.15, bs, 1); bu.position.set(bx, bs / 2 - 0.3, z); scene.add(bu);
+        const f = new THREE.Sprite(Math.random() < 0.5 ? M.flowerBlue : M.flowerRed); f.scale.set(0.9, 0.9, 1); f.position.set(side * (4.9 + Math.random() * 1.2), 0.3, z + Math.random() * 3); scene.add(f); }
+    }
+  }
+}
 const inArena = (x, z) => Math.abs(x) < ARENA.w / 2 + 2.5 && z < ARENA.z + 16 && z > ARENA.z - ARENA.d - 3;   // keep scenery out of the boss courtyard
 function buildArena() {
   const z0 = ARENA.z, d = ARENA.d, w = ARENA.w, back = 13;          // `back`: extra room behind the start line for the camera
@@ -276,6 +360,7 @@ function buildLevel() {
 
   // scenery
   buildArena();
+  buildChase(); buildArena2(); stageScenery();
   const worldLen = -WORLD_END + 300;
   const water = new THREE.Mesh(new THREE.PlaneGeometry(500, worldLen), M.water);
   M.water.map.repeat.set(120, Math.round(worldLen / 2.4));
@@ -301,7 +386,7 @@ function buildLevel() {
   }
 }
 buildLevel();
-for (const s of solids) if (!movers.includes(s)) freeze(s.mesh);
+for (const s of solids) if (!movers.includes(s) && !s.dynamic) freeze(s.mesh);   // (trap-door floor halves and rising pads move, so they stay live)
 for (const o of scene.children) if (o.isSprite && !o.userData.dynamic) freeze(o);
 
 // ---------- player ----------
@@ -429,7 +514,7 @@ function showMsg(title, body, label = 'PLAY') {
   const h1 = msg.querySelector('h1'); h1.textContent = title; h1.hidden = title === GAME_TITLE;   // the logo stands in for the title text
   msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>: dodge his rocks, and spin into the big one to knock it back at him.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs (CC BY 4.0)</small>`);
+showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>. Beat him, outrun the boulder in level 2, then take on Dr. Neo Cortex: spin into his ray blasts to knock them back!<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs, Dr. Neo Cortex model by SG_Gaming786 (CC BY 4.0)</small>`);
 let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
 // if the browser still has audio blocked a moment after the first tap, tell the player how to turn it on
 function checkSound() { const s = audioStatus(); if (!s.muted && s.state !== 'running') toast('TAP THE SPEAKER BUTTON FOR SOUND'); }
@@ -448,7 +533,7 @@ function startOrRestart() {
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
 function resetGame() {
-  removeQueue.length = 0; bossReset();
+  removeQueue.length = 0; bossReset(); stagesReset();
   lives = START_LIVES; fruitCount = 0; cratesBroken = 0; masks = 0; invincible = 0; checkpoint.set(0, 0, 0);
   for (const c of crates) {
     c.broken = false; c.mesh.visible = true; c.armed = false;
@@ -464,9 +549,15 @@ function resetGame() {
 }
 let camSnap = true;   // jump the camera straight to the player (respawn / restart) instead of gliding across the level
 function respawn() {
+  if (cortex.active && cortex.wantOpen) {                 // the floor is gone: come back on a pad that is still standing
+    const s = cortex.pads.find(q => q.pad.state === 'up') || cortex.pads[0]; if (s.pad.state !== 'up') { s.pad.state = 'up'; s.pad.top = 0.9; s.broken = false; s.mesh.visible = true; }
+    checkpoint.set(s.pad.x, 0.9, s.pad.z);
+  }
   player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 1;
   player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
   camSnap = true; aku.userData.init = false;
+  if (chase.active) { player.facing = 0; modelHolder.userData.yaw = 0; chase.boulder.position.set(0, CHASE.R, checkpoint.z - 17); chase.stun = 0; }   // runs toward the camera; the boulder starts behind
+  if (cortex.active && cortex.dead === 0) { clearBlasts(); cortex.act = null; cortex.shootT = Math.max(cortex.shootT, 1.5); cortex.intro = Math.max(cortex.intro, 1.2); }
   if (boss.active && boss.dead === 0) { clearRocks(); boss.act = null; boss.want = null; boss.intro = Math.max(boss.intro, 1.5); boss.bigT = Math.max(boss.bigT, 6); }   // fresh start in the arena
 }
 const toastEl = document.getElementById('toast');
@@ -646,7 +737,12 @@ function makeRooAnimator(parts, image, cx) {
 }
 loadGlb(window.__RIPPER_B64, './assets/ripper_roo.glb', onRipper, () => {});
 
-function updateBossBar() { [...bossUI.hp.children].forEach((el, i) => el.classList.toggle('lost', i >= boss.hp)); }
+function setBossBar(name, max, hp) {     // one health bar shared by both bosses
+  document.getElementById('bossname').textContent = name;
+  if (bossUI.hp.children.length !== max) bossUI.hp.innerHTML = '<i></i>'.repeat(max);
+  [...bossUI.hp.children].forEach((el, i) => el.classList.toggle('lost', i >= hp));
+}
+function updateBossBar() { setBossBar('RIPPER ROO', BOSS_HP, boss.hp); }
 function clearRocks() { for (const r of boss.rocks) scene.remove(r.mesh); boss.rocks.length = 0; }
 function spawnBoom(p, size = 1) {
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
@@ -697,10 +793,7 @@ function updateBoss(dt) {
     boss.dead += dt; boss.root.rotation.y += dt * 14; boss.root.position.y = Math.min(boss.dead * 2.2, 4);
     boss.root.scale.setScalar(Math.max(0.01, 1 - Math.max(0, boss.dead - 1.8) * 1.2)); bossShadow.visible = false;
     if (Math.random() < dt * 14) { const p = bp.clone(); p.x += (Math.random() - 0.5) * 3; p.y += 1 + Math.random() * 3; spawnBoom(p, 0.8 + Math.random()); }
-    if (boss.dead > 2.6 && state === 'play') {
-      boss.root.visible = false; bossUI.bar.hidden = true; state = 'won'; uiLockUntil = performance.now() + 900; music(null); sfx('victory');
-      showMsg('YOU DEFEATED RIPPER ROO!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
-    }
+    if (boss.dead > 2.6 && state === 'play') { boss.root.visible = false; bossUI.bar.hidden = true; startChase(); }   // on to level 2
     return;
   }
   boss.flash = Math.max(0, boss.flash - dt);
@@ -794,6 +887,268 @@ function updateBoss(dt) {
   }
   // touching Ripper Roo hurts too (not while he is dizzy)
   if (fighting && boss.stun <= 0 && Math.hypot(bp.x - player.pos.x, bp.z - player.pos.z) < 1.7 && player.pos.y < 3.5 && bp.y < 1.2) hit();
+}
+
+// ---------- level 2: boulder chase ----------
+const dangerEl = document.getElementById('danger');
+function fadeThen(cb, ms = 1300) {          // fade to black, run cb (teleport etc.), fade back in
+  state = 'transition'; uiLockUntil = performance.now() + 900; bossUI.fade.classList.add('on');
+  setTimeout(() => { cb(); if (state === 'transition') state = 'play'; bossUI.fade.classList.remove('on'); }, ms);
+}
+function startChase() {
+  toast('RIPPER ROO DEFEATED!'); sfx('victory'); music(null);
+  fadeThen(() => {
+    boss.active = false; boss.root.visible = false; bossShadow.visible = false; clearRocks(); bossUI.bar.hidden = true;
+    chase.active = true; chase.stun = 0; chase.t = 0; chase.boulder.visible = true;
+    checkpoint.set(0, 0, CHASE.z0 + 6); player.pos.set(0, 0, CHASE.z0 + 6); respawn(); player.hurt = 0;
+    music('chase'); sfx('intro'); toast('LEVEL 2: RUN!');
+  }, 2200);
+}
+function updateChase(dt) {
+  const b = chase.boulder, R = CHASE.R, bp = b.position;
+  chase.t += dt;
+  const lead = player.pos.z - bp.z, progress = Math.min(1, Math.max(0, (player.pos.z - CHASE.z0) / CHASE.len));
+  let v = 7.3 + progress * 0.9;                                  // a touch slower than Crash, and faster later on
+  if (lead > 24) v += 2.5; else if (lead < 9) v -= 0.5;         // rubber band: never hopelessly far, never unfairly close
+  if (chase.stun > 0) { chase.stun -= dt; v *= 0.15; }
+  bp.z += v * dt; bp.y = R + Math.abs(Math.sin(chase.t * 6)) * 0.06; b.rotation.x += v * dt / R;
+  if (invincible > 0 && lead < R) bp.z = player.pos.z - R;       // golden Aku Aku: the boulder can't touch you
+  const danger = Math.max(0, Math.min(1, 1 - (lead - R) / 14));
+  dangerEl.style.opacity = (danger * (0.6 + 0.4 * Math.sin(chase.t * 14))).toFixed(2);   // red edges pulse as it closes in
+  setRumble(Math.max(0.15, danger));
+  if (lead < R + 0.3 && player.pos.y < R * 1.7 && invincible <= 0 && player.hurt <= 0.5) {   // crushed
+    const hadMask = masks > 0;
+    sfx('boulderHit'); hit();
+    if (hadMask && state === 'play') { bp.z = player.pos.z - R - 8; chase.stun = 1; }          // Aku Aku takes the hit and shoves the boulder back
+  }
+  if (chase.finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 2) startCortex();
+}
+
+// ---------- the final boss: Dr. Neo Cortex ----------
+function resetPads() {
+  cortex.wantOpen = false; cortex.floorOpen = 0;
+  for (const s of cortex.pads) { const p = s.pad; p.state = 'hidden'; p.top = -0.5; s.broken = false; s.mesh.visible = true; p.plate.material.color.setHex(0x66ffee); }
+  updateTrapdoor(0);
+}
+function startCortex() {
+  toast('LEVEL COMPLETE!'); sfx('portal'); music(null); setRumble(0);
+  fadeThen(() => {
+    chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0;
+    Object.assign(cortex, { active: true, hp: CORTEX_HP, stage: 1, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 1, flash: 0, laugh: 0, recoil: 0, seq: null, seqPending: false, padTimer: 7, shootT: 1.5, rootX: 0, sweep: 0 });
+    resetPads(); clearBlasts();
+    cortex.platform.visible = true; cortex.platform.rotation.set(0, 0, 0); cortex.platform.position.set(0, 5.6, cortex.zp); cortex.root.visible = true; cortex.root.rotation.set(0, 0, 0);
+    checkpoint.set(0, 0, ARENA2.z - 3); player.pos.set(0, 0, ARENA2.z - 3); respawn(); player.hurt = 0;
+    setBossBar('DR. NEO CORTEX', CORTEX_HP, CORTEX_HP); bossUI.bar.hidden = false;
+    music('cortex'); sfx('intro'); toast('DR. NEO CORTEX!'); cortexLaugh();
+  });
+}
+function stagesReset() {                      // back to the very start of the game
+  chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0; setRumble(0);
+  cortex.active = false; cortex.dead = 0; cortex.seq = null; cortex.seqPending = false; clearBlasts(); resetPads(); cortex.root.visible = true; cortex.root.rotation.set(0, 0, 0);
+  cortex.platform.rotation.set(0, 0, 0); cortex.platform.position.set(0, 5.6, cortex.zp);
+}
+function cortexLaugh() { sfx('laugh'); cortex.laugh = 1.3; }
+function clearBlasts() { for (const b of cortex.blasts) scene.remove(b.mesh); cortex.blasts.length = 0; }
+
+function makeRayGun() {                       // Cortex's ray gun (built from simple shapes, since the model has no gun)
+  const g = new THREE.Group();
+  const dark = new THREE.MeshLambertMaterial({ color: 0x3b4650, emissive: 0x151a1f }), metal = new THREE.MeshLambertMaterial({ color: 0x8a96a3, emissive: 0x20262c });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.22, 0.55), dark); body.position.z = 0.15; g.add(body);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.085, 0.55, 8), metal); barrel.rotation.x = Math.PI / 2; barrel.position.set(0, 0.02, 0.62); g.add(barrel);
+  const grip = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.3, 0.14), dark); grip.position.y = -0.2; g.add(grip);
+  const tip = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), new THREE.MeshBasicMaterial({ color: 0x66ff66 })); tip.position.set(0, 0.02, 0.92); g.add(tip);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.02, 0.95); g.add(muzzle);
+  g.userData = { tip, muzzle }; return g;
+}
+async function onCortexModel(gltf) {
+  const parts = [];
+  gltf.scene.updateMatrixWorld(true);
+  gltf.scene.traverse(o => { if (o.isMesh) parts.push(o); });
+  const inner = new THREE.Group();
+  for (const o of parts) {
+    const map = o.material.map;
+    if (map) { map.colorSpace = THREE.SRGBColorSpace; map.magFilter = THREE.NearestFilter; map.minFilter = THREE.NearestMipmapLinearFilter; map.anisotropy = 8; }
+    o.material = new THREE.MeshLambertMaterial({ map, side: THREE.DoubleSide, emissive: 0x222222 });
+    o.geometry.applyMatrix4(o.matrixWorld);                    // bake the pose into the vertices so the parts can be bent
+    o.removeFromParent(); o.position.set(0, 0, 0); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); o.frustumCulled = false; inner.add(o);
+  }
+  const box = new THREE.Box3().setFromObject(inner), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x, -box.min.y, -c.z);
+  const gun = makeRayGun(); inner.add(gun);
+  const wrap = new THREE.Group(); wrap.add(inner); wrap.scale.setScalar(5.6 / size.y);   // faces +Z, toward the player
+  cortex.model = wrap; cortex.gun = gun; cortex.baseScale = 5.6 / size.y; cortex.anim = makeCortexAnimator(parts); cortex.root.add(wrap);
+}
+// One rigid mesh: weight each vertex by where it is (legs low, head high, arms out at the sides) and bend those parts each frame.
+function makeCortexAnimator(parts) {
+  const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const X1 = new THREE.Vector3(1, 0, 0), XN = new THREE.Vector3(-1, 0, 0), Z1 = new THREE.Vector3(0, 0, 1);
+  const v = new THREE.Vector3(), SR = new THREE.Vector3(0.34, 0.95, 0.4), SL = new THREE.Vector3(-0.34, 0.95, 0.4), HEAD = new THREE.Vector3(0, 1.55, 0.3);
+  const qA = new THREE.Quaternion(), qB = new THREE.Quaternion(), qGun = new THREE.Quaternion(), qLev = new THREE.Quaternion(), qFlap = new THREE.Quaternion(), qHead = new THREE.Quaternion(), eul = new THREE.Euler();
+  const tipRest = new THREE.Vector3(1, 0.85, 0.4);
+  let bestX = -1;
+  const data = parts.map(o => {
+    const pos = o.geometry.attributes.position, n = pos.count, rest = Float32Array.from(pos.array);
+    const leg = new Float32Array(n), head = new Float32Array(n), arm = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const x = rest[i * 3], y = rest[i * 3 + 1];
+      leg[i] = 1 - sstep(0.45, 0.75, y); head[i] = sstep(1.4, 1.7, y);
+      arm[i] = sstep(0.42, 0.62, Math.abs(x)) * (1 - sstep(1.3, 1.55, y));
+      if (x > bestX && arm[i] > 0.9) { bestX = x; tipRest.set(x, y, rest[i * 3 + 2]); }
+    }
+    return { pos, rest, leg, head, arm, n };
+  });
+  const out = { dir: new THREE.Vector3(), tip: new THREE.Vector3() };
+  function update(P, t) {
+    qA.setFromUnitVectors(X1, P.aimDir); qGun.set(0, 0, 0, 1).slerp(qA, P.aim);
+    qFlap.setFromAxisAngle(Z1, Math.sin(t * 2.2) * 0.1 * (1 - P.aim)); qGun.premultiply(qFlap);
+    qB.setFromUnitVectors(XN, P.leverDir); qLev.set(0, 0, 0, 1).slerp(qB, P.lever);
+    eul.set(P.nod, P.headYaw, P.headTilt); qHead.setFromEuler(eul);
+    const cl = Math.cos(P.legSwing), sl = Math.sin(P.legSwing);
+    for (const d of data) {
+      const arr = d.pos.array;
+      for (let i = 0; i < d.n; i++) {
+        const x = d.rest[i * 3], y = d.rest[i * 3 + 1], z = d.rest[i * 3 + 2];
+        let nx = x, ny = y, nz = z;
+        const wa = d.arm[i];
+        if (wa > 0) { v.set(x, y, z).sub(x > 0 ? SR : SL).applyQuaternion(x > 0 ? qGun : qLev).add(x > 0 ? SR : SL); nx += (v.x - x) * wa; ny += (v.y - y) * wa; nz += (v.z - z) * wa; }
+        const wl = d.leg[i];
+        if (wl > 0) { const s = x > 0 ? 1 : -1, c2 = cl, s2 = sl * s, dy = y - 0.6, dz = z - 0.05; ny += (0.6 + dy * c2 - dz * s2 - y) * wl; nz += (0.05 + dy * s2 + dz * c2 - z) * wl; }   // legs dangle and kick, alternately
+        const wh = d.head[i];
+        if (wh > 0) { v.set(x, y, z).sub(HEAD).applyQuaternion(qHead).add(HEAD); nx += (v.x - x) * wh; ny += (v.y - y) * wh; nz += (v.z - z) * wh; }
+        arr[i * 3] = nx; arr[i * 3 + 1] = ny; arr[i * 3 + 2] = nz;
+      }
+      d.pos.needsUpdate = true;
+    }
+    out.dir.copy(X1).applyQuaternion(qGun); out.tip.copy(tipRest).sub(SR).applyQuaternion(qGun).add(SR);   // where the gun hand ended up
+  }
+  return { update, out };
+}
+loadGlb(window.__CORTEX_B64, './assets/dr_neo_cortex.glb', onCortexModel, () => {});
+
+const blastGeo = new THREE.SphereGeometry(0.45, 12, 8);
+const blastMat = new THREE.MeshBasicMaterial({ color: 0x77ff66 }), blastGlow = new THREE.MeshBasicMaterial({ color: 0x33ff33, transparent: true, opacity: 0.35 }), blastBack = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+const gunPt = new THREE.Vector3(), hitPt = new THREE.Vector3();
+function fireBlast() {
+  const c = cortex; if (!c.gun) return;
+  c.gun.userData.muzzle.getWorldPosition(gunPt);
+  const dir = new THREE.Vector3(player.pos.x - gunPt.x, player.pos.y + 0.9 - gunPt.y, player.pos.z - gunPt.z).normalize();
+  const mesh = new THREE.Mesh(blastGeo, blastMat), glow = new THREE.Mesh(blastGeo, blastGlow); glow.scale.setScalar(1.9); mesh.add(glow);
+  mesh.position.copy(gunPt); scene.add(mesh);
+  c.blasts.push({ mesh, vel: dir.multiplyScalar(c.stage === 2 ? 14 : 11), kind: 'shot', life: 4 });
+  sfx('zap'); c.recoil = 0.3;
+}
+function cortexHit() {
+  const c = cortex;
+  c.hp--; c.stun = 1.6; c.flash = 1.4; c.act = null; c.shootT = 1.4;
+  setBossBar('DR. NEO CORTEX', CORTEX_HP, c.hp); sfx('bossHit');
+  c.root.getWorldPosition(hitPt); hitPt.y += 2.2; spawnBoom(hitPt, 1.6); spawnDebris(hitPt);
+  if (c.hp <= 0) { c.dead = 0.001; clearBlasts(); toast('DR. NEO CORTEX IS DEFEATED!'); }
+  else if (c.hp === CORTEX_HP / 2 && c.stage === 1) { c.seqPending = true; clearBlasts(); toast('HE REACHES FOR THE LEVER...'); }
+  else toast(`DR. NEO CORTEX LOSES A LIFE! ${c.hp} LEFT`);
+}
+function updateTrapdoor(dt) {                 // the floor is two trap-door halves; four pads rise out of it, and in stage two they collapse one by one
+  const c = cortex, tgt = c.wantOpen ? 1 : 0;
+  c.floorOpen += Math.sign(tgt - c.floorOpen) * Math.min(Math.abs(tgt - c.floorOpen), dt / 1.2);
+  for (const f of c.floor) { f.mesh.position.x = f.side * (ARENA2.w / 4 + c.floorOpen * (ARENA2.w / 2 + 1)); syncBox(f); }
+  for (const s of c.pads) {
+    const p = s.pad;
+    if (p.state === 'rising') { p.t += dt / 1.4; const k = Math.min(1, p.t); p.top = -0.5 + 1.4 * (k * k * (3 - 2 * k)); if (k >= 1) p.state = 'up'; }
+    else if (p.state === 'warn') { p.t += dt; p.plate.material.color.setHex(Math.floor(p.t * 10) % 2 ? 0xff3322 : 0xffcc22); if (p.t > 1.5) { p.state = 'sunk'; p.t = 0; s.broken = true; s.mesh.visible = false; sfx('padCollapse'); } }
+    else if (p.state === 'sunk') { p.t += dt; if (p.t > 3.2) { p.state = 'regrow'; p.t = 0; s.broken = false; s.mesh.visible = true; p.top = -0.5; p.plate.material.color.setHex(0x66ffee); } }
+    else if (p.state === 'regrow') { p.t += dt / 0.9; const k = Math.min(1, p.t); p.top = -0.5 + 1.4 * k; if (k >= 1) p.state = 'up'; }
+    s.mesh.position.y = p.top - p.H / 2; syncBox(s);
+  }
+  if (dt > 0 && c.active && c.stage === 2 && c.dead === 0 && !c.seq) {
+    c.padTimer -= dt;
+    if (c.padTimer <= 0) { const up = c.pads.filter(s => s.pad.state === 'up'); if (up.length > 2) { const s = up[(Math.random() * up.length) | 0]; s.pad.state = 'warn'; s.pad.t = 0; toast('A PLATFORM IS FALLING!'); } c.padTimer = 6; }
+  }
+}
+const cortexP = { aim: 0.45, aimDir: new THREE.Vector3(0.55, -0.6, 0.6).normalize(), lever: 0, leverDir: new THREE.Vector3(-0.8, 0.3, 0.4).normalize(), headYaw: 0, headTilt: 0, nod: 0, legSwing: 0 };
+const idleAim = new THREE.Vector3(0.55, -0.6, 0.6).normalize(), leverUp = new THREE.Vector3(-0.8, 0.5, 0.4).normalize(), leverDown = new THREE.Vector3(-0.6, -0.7, 0.4).normalize(), toPlayer = new THREE.Vector3();
+function updateCortex(dt) {
+  const c = cortex, plat = c.platform, wp = plat.position, P = cortexP;
+  c.t += dt;
+  updateTrapdoor(dt);
+  if (c.intro > 0) c.intro -= dt;
+  // ---- defeated: the platform fails, he tumbles off in a fireball, then the game is won ----
+  if (c.dead > 0) {
+    c.dead += dt; wp.y -= dt * (1 + c.dead * 2.5); plat.rotation.z += dt * 0.8; c.root.rotation.y += dt * 12; c.root.rotation.z += dt * 3;
+    if (Math.random() < dt * 12) { c.root.getWorldPosition(hitPt); hitPt.x += (Math.random() - 0.5) * 3; hitPt.y += 1 + Math.random() * 3; spawnBoom(hitPt, 0.8 + Math.random()); }
+    if (c.dead > 3 && state === 'play') {
+      c.active = false; bossUI.bar.hidden = true; plat.visible = false; state = 'won'; uiLockUntil = performance.now() + 900; music(null); sfx('victory');
+      showMsg('YOU DEFEATED DR. NEO CORTEX!', `You beat the game!<br>Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
+    }
+    return;
+  }
+  c.flash = Math.max(0, c.flash - dt); c.laugh = Math.max(0, c.laugh - dt); c.recoil = Math.max(0, c.recoil - dt);
+  if (c.stun > 0) c.stun -= dt;
+  if (c.seqPending && c.stun <= 0 && !c.seq) { c.seq = { t: 0, lever: false, rose: false, opened: false }; c.seqPending = false; c.act = null; toast('HE PULLED THE LEVER!'); }
+  const fighting = c.intro <= 0 && !c.seq;
+  // ---- hover platform sweeps side to side; holds still while he is dizzy or at the lever ----
+  if (c.stun <= 0 && !c.seq) c.sweep += dt * (c.stage === 2 ? 0.85 : 0.6);
+  wp.x = Math.sin(c.sweep) * 7; wp.y = 5.6 + Math.sin(c.t * 2) * 0.18;
+  plat.rotation.z = c.stun > 0 ? Math.sin(c.t * 30) * 0.04 : Math.cos(c.sweep) * 0.05;
+  c.rootX += ((c.seq ? -2.1 : 0) - c.rootX) * (1 - Math.exp(-4 * dt)); c.root.position.x = c.rootX; c.root.position.y = 0.45 + Math.sin(c.t * 4) * 0.05;
+  // ---- lever / trap-door / pads sequence ("stage two") ----
+  let leverK = c.stage === 2 ? 1 : 0;
+  if (c.seq) {
+    const s = c.seq; s.t += dt;
+    leverK = Math.max(0, Math.min(1, (s.t - 1.0) / 0.5));
+    if (!s.lever && s.t > 1.5) { s.lever = true; sfx('lever'); }
+    if (!s.rose && s.t > 1.9) { s.rose = true; for (const p of c.pads) { p.pad.state = 'rising'; p.pad.t = 0; } sfx('alarm'); sfx('padRise'); toast('GET ON A PLATFORM!'); }
+    if (!s.opened && s.t > 4.7) { s.opened = true; c.wantOpen = true; sfx('trapdoor'); const p0 = c.pads[0].pad; checkpoint.set(p0.x, 0.9, p0.z); }   // from now on you respawn on a pad
+    if (s.t > 6.2) { c.seq = null; c.stage = 2; c.shootT = 1.2; c.padTimer = 7; toast('STAGE 2! KEEP MOVING!'); cortexLaugh(); }
+  }
+  c.lever.rotation.z = -0.6 + 1.2 * leverK;
+  // ---- ray gun: charge, fire, recoil ----
+  if (fighting && c.stun <= 0 && !c.act) { c.shootT -= dt; if (c.shootT <= 0) c.act = { kind: 'shoot', t: 0, dur: c.stage === 2 ? 1.0 : 1.3, fired: 0, shots: c.stage === 2 && Math.random() < 0.45 ? 2 : 1 }; }
+  P.aim = 0.45; P.aimDir.copy(idleAim); P.lever = leverK > 0 ? 1 : 0; let charge = 0, squash = 1, lean = 0;
+  const a = c.act;
+  if (a && a.kind === 'shoot' && c.stun <= 0) {
+    a.t += dt; const p = a.t / a.dur;
+    if (c.gun) { c.gun.userData.muzzle.getWorldPosition(gunPt); toPlayer.set(player.pos.x - gunPt.x, player.pos.y + 0.9 - gunPt.y, player.pos.z - gunPt.z).normalize(); }
+    const k = Math.min(1, p / 0.35); P.aim = 0.45 + 0.55 * k * k * (3 - 2 * k); P.aimDir.copy(idleAim).lerp(toPlayer, k).normalize();   // he lifts the gun and tracks you
+    charge = Math.min(1, p / 0.5);
+    if (a.fired === 0 && p >= 0.5) { fireBlast(); a.fired = 1; }
+    if (a.shots === 2 && a.fired === 1 && p >= 0.72) { fireBlast(); a.fired = 2; }
+    if (p >= 1) { c.act = null; c.shootT = (c.stage === 2 ? 0.8 : 1.4) * (0.8 + Math.random() * 0.5); }
+  } else if (c.stun > 0) c.act = null;
+  if (c.recoil > 0) { P.aimDir.y += c.recoil * 1.6; P.aimDir.normalize(); lean = -0.18 * (c.recoil / 0.3); squash = 1 + 0.06 * (c.recoil / 0.3); }
+  if (c.seq) { const s = c.seq; P.aimDir.copy(idleAim); P.aim = 0.3; P.leverDir.copy(leverUp).lerp(leverDown, Math.min(1, Math.max(0, (s.t - 1.0) / 0.5))).normalize(); P.lever = Math.min(1, s.t / 0.9); lean = 0.15 * P.lever; }
+  squash *= 1 - 0.07 * charge;
+  // ---- head + legs ----
+  c.root.getWorldPosition(hitPt);
+  const look = Math.atan2(player.pos.x - hitPt.x, 12) * 0.9;
+  P.headYaw = c.stun > 0 ? Math.sin(c.t * 18) * 0.9 : c.laugh > 0 ? Math.sin(c.t * 24) * 0.45 * Math.min(1, c.laugh) : look;
+  P.headTilt = c.stun > 0 ? Math.sin(c.t * 13) * 0.3 : Math.sin(c.t * 1.3) * 0.06;
+  P.nod = c.laugh > 0 ? Math.sin(c.t * 24) * 0.25 : charge * 0.2 + Math.sin(c.t * 2) * 0.04;
+  P.legSwing = c.stun > 0 ? Math.sin(c.t * 14) * 0.7 : Math.sin(c.t * 3) * 0.3;
+  c.root.rotation.set(lean, 0, 0);
+  if (cortex.model) { const sxz = 1 / Math.sqrt(squash); cortex.model.scale.set(cortex.baseScale * sxz, cortex.baseScale * squash, cortex.baseScale * sxz); }
+  if (c.anim) {
+    c.anim.update(P, c.t);
+    c.gun.position.copy(c.anim.out.tip); c.gun.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.anim.out.dir);
+    const tip = c.gun.userData.tip; tip.scale.setScalar(1 + charge * 1.6 + c.recoil * 2); tip.material.color.setHex(Math.floor(c.t * 14) % 2 && charge > 0 ? 0xeaffea : 0x66ff66);
+  }
+  c.root.visible = c.flash > 0 ? Math.floor(c.t * 20) % 2 === 0 : true;
+  // ---- ray blasts ----
+  for (let i = c.blasts.length - 1; i >= 0; i--) {
+    const b = c.blasts[i]; if (!b) continue;
+    const bp = b.mesh.position; let gone = false;
+    if (b.kind === 'returning') {                                  // knocked back: homes in on Cortex
+      c.root.getWorldPosition(hitPt); hitPt.y += 2.2;
+      b.vel.copy(hitPt).sub(bp).setLength(22); bp.addScaledVector(b.vel, dt);
+      if (bp.distanceTo(hitPt) < 2.4) { cortexHit(); gone = true; }
+    } else {
+      bp.addScaledVector(b.vel, dt); b.life -= dt;
+      const dist = Math.hypot(bp.x - player.pos.x, bp.y - (player.pos.y + 0.9), bp.z - player.pos.z), powered = player.spin > 0 || invincible > 0;
+      if (dist < (powered ? 2.2 : 0.95)) {
+        if (powered) { b.kind = 'returning'; b.mesh.material = blastBack; sfx('deflect'); toast('NICE HIT!'); }
+        else { hit(); spawnBoom(bp, 0.8); cortexLaugh(); gone = true; }
+      } else if (b.life <= 0 || bp.y < -12 || bp.z > ARENA2.z + 12 || (bp.y < 0.15 && c.floorOpen < 0.4 && c.pads.every(s => s.broken || s.pad.top < 0.2))) gone = true;
+    }
+    if (gone) { scene.remove(b.mesh); const at = c.blasts.indexOf(b); if (at >= 0) c.blasts.splice(at, 1); }
+  }
 }
 
 // ---------- physics ----------
@@ -947,10 +1302,12 @@ function update(dt) {
         player.pos.y < s.pos.y + 0.6 && player.pos.y + PLAYER_H > s.pos.y) hit();
   }
   if (boss.active) updateBoss(dt);
+  if (chase.active) updateChase(dt);
+  if (cortex.active) updateCortex(dt);
   // fall
   if (player.pos.y < -10) die();
   // finish
-  if (state === 'play' && !boss.active && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) startBoss();   // level done -> boss fight
+  if (state === 'play' && !boss.active && !chase.active && !cortex.active && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) startBoss();   // level done -> boss fight
 }
 
 // ---------- render loop ----------
@@ -1018,14 +1375,15 @@ function frame() {
     else { mt.color.setHex(0xffffff); mt.emissive.setHex(0x2a2a2a); }
   }
   // camera
-  const bossCam = boss.active;   // arena camera sits a little higher and further back so Ripper Roo stays in view
-  camTarget.set(player.pos.x * (bossCam ? 0.4 : 0.5), Math.max(player.pos.y, -2) + (bossCam ? 5.8 : 4.8), player.pos.z + (bossCam ? 11 : 9.5));
+  // camera per stage: normal / boss arena / chase (in front of Crash, looking back at the boulder) / Cortex's lab
+  const cam = chase.active ? { dx: 0.4, dy: 7.4, dz: 13, ly: 0.8, lz: -3 } : boss.active ? { dx: 0.4, dy: 5.8, dz: 11, ly: 1.8, lz: -9 } : cortex.active ? { dx: 0.4, dy: 6, dz: 11, ly: 3.2, lz: -9 } : { dx: 0.5, dy: 4.8, dz: 9.5, ly: 1.2, lz: -4 };
+  camTarget.set(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.dy, player.pos.z + cam.dz);
   if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
   else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
-  camera.lookAt(player.pos.x * (bossCam ? 0.4 : 0.5), Math.max(player.pos.y, -2) + (bossCam ? 1.8 : 1.2), player.pos.z - (bossCam ? 9 : 4));
+  camera.lookAt(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.ly, player.pos.z + cam.lz);
 
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { cortexHit, fireBlast, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
