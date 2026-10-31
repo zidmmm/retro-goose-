@@ -12,6 +12,9 @@ const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H
 const START_LIVES = 3;
 const INVINCIBLE_TIME = 8;
 const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
+const BOSS_HP = 5;                                   // Ripper Roo's lives (shown on the health bar)
+const ARENA = { z: LEVEL_END - 200, w: 20, d: 26 };  // boss arena: front edge z, width, depth (the player enters at the front, Ripper Roo is at the far end)
+const WORLD_END = ARENA.z - ARENA.d - 60;            // scenery (floor, plants) extends this far
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
@@ -110,6 +113,18 @@ function spike(x, y, z) {
   g.position.set(x, y, z); scene.add(g); spikes.push({ pos: g.position, half: new THREE.Vector3(0.5, 0.6, 0.5) });
 }
 
+// boss arena: a walled stone courtyard far past the end of the level
+const inArena = (x, z) => Math.abs(x) < ARENA.w / 2 + 2.5 && z < ARENA.z + 16 && z > ARENA.z - ARENA.d - 3;   // keep scenery out of the boss courtyard
+function buildArena() {
+  const z0 = ARENA.z, d = ARENA.d, w = ARENA.w, back = 13;          // `back`: extra room behind the start line for the camera
+  platform(0, z0 + back, z0 - d, w);
+  walls(z0 + back, z0 - d, w / 2, 4.5);
+  addBox(0, 1.25, z0 - d - 0.6, w + 2.4, 6.5, 1.2, M.wall, { wall: true });          // back wall behind Ripper Roo
+  addBox(0, 1.25, z0 + back + 0.6, w + 2.4, 6.5, 1.2, M.wall, { wall: true });       // wall behind the camera
+  addBox(0, 3, z0 + 2, w, 6, 1, M.wall, { wall: true }).mesh.visible = false;        // invisible line: you can't back up past the start (keeps the camera inside)
+  for (const [x, z] of [[-8.6, z0 - 6], [8.6, z0 - 6], [-8.6, z0 - d + 6], [8.6, z0 - d + 6]]) addBox(x, 2, z, 1.6, 4, 1.6, M.wall, { wall: true });   // corner totems
+  crate(-6, 0, z0 - 3, 'aku'); crate(6, 0, z0 - 3, 'life');                          // a little help at the entrance
+}
 function freeze(o) { o.updateMatrix(); o.matrixAutoUpdate = false; for (const c of o.children) freeze(c); }   // static object: compute its transform once
 // ---------- level ----------
 function buildLevel() {
@@ -259,22 +274,27 @@ function buildLevel() {
   const disc = new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), M.portal); finish.add(disc);
 
   // scenery
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(500, -LEVEL_END + 300), M.water);
-  water.rotation.x = -Math.PI / 2; water.position.set(0, -9, LEVEL_END / 2); scene.add(water);
-  const span = -LEVEL_END + 20;
+  buildArena();
+  const worldLen = -WORLD_END + 300;
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(500, worldLen), M.water);
+  M.water.map.repeat.set(120, Math.round(worldLen / 2.4));
+  water.rotation.x = -Math.PI / 2; water.position.set(0, -9, WORLD_END / 2); scene.add(water);
+  const span = -WORLD_END + 20;
   for (let z = 14; z > LEVEL_END - 24; z -= 2.2) {                 // a thick bush canopy below the path hides the drop
     for (let k = 0; k < 4; k++) {
       const x = (Math.random() - 0.5) * 34, bs = 3.5 + Math.random() * 3, y = -3 - Math.random() * 5;
       const b = new THREE.Sprite(M.tree); b.scale.set(bs * 1.15, bs, 1); b.position.set(x, y, z + Math.random() * 2); scene.add(b);
     }
   }
-  for (let i = 0; i < Math.round(-LEVEL_END * 0.9); i++) {          // big jungle plants either side of the trail
+  for (let i = 0; i < Math.round(-WORLD_END * 0.9); i++) {          // big jungle plants either side of the trail
     const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * span, x = side * (6.5 + Math.random() * 16);
+    if (inArena(x, z)) continue;
     const h = 5 + Math.random() * 6;
     const t = new THREE.Sprite(M.tree); t.scale.set(h * 1.15, h, 1); t.position.set(x, h / 2 - 1.8, z); scene.add(t);
   }
   for (let i = 0; i < Math.round(-LEVEL_END * 0.35); i++) {         // leafy bushes hugging the path edge, and flowers
     const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * span, x = side * (5.3 + Math.random() * 2.5);
+    if (inArena(x, z)) continue;
     const bush = new THREE.Sprite(M.tree); const bs = 2 + Math.random() * 1.8; bush.scale.set(bs * 1.15, bs, 1); bush.position.set(x, bs / 2 - 0.3, z); scene.add(bush);
     const f = new THREE.Sprite(Math.random() < 0.5 ? M.flowerBlue : M.flowerRed); f.scale.set(0.9, 0.9, 1); f.position.set(side * (4.9 + Math.random() * 1.2), 0.3, z + Math.random() * 3); scene.add(f);
   }
@@ -416,7 +436,7 @@ function showMsg(title, body, label = 'PLAY') {
   const h1 = msg.querySelector('h1'); h1.textContent = title; h1.hidden = title === GAME_TITLE;   // the logo stands in for the title text
   msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
+showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>: dodge his rocks, and spin into the big one to knock it back at him.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs (CC BY 4.0)</small>`);
 let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
 function unlockAudio() {
   try { ac ||= new AudioContext(); if (ac.state === 'suspended') ac.resume(); } catch {}   // iPad Safari keeps audio suspended until a tap
@@ -429,7 +449,7 @@ function startOrRestart() {
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
 function resetGame() {
-  removeQueue.length = 0;
+  removeQueue.length = 0; bossReset();
   lives = START_LIVES; fruitCount = 0; cratesBroken = 0; masks = 0; invincible = 0; checkpoint.set(0, 0, 0);
   for (const c of crates) {
     c.broken = false; c.mesh.visible = true; c.armed = false;
@@ -448,6 +468,7 @@ function respawn() {
   player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 1;
   player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
   camSnap = true; aku.userData.init = false;
+  if (boss.active && boss.dead === 0) { clearRocks(); boss.intro = Math.max(boss.intro, 1.5); boss.bigT = Math.max(boss.bigT, 6); }   // fresh start in the arena
 }
 const toastEl = document.getElementById('toast');
 let toastTimer;
@@ -538,6 +559,150 @@ function breakCrate(c, bounce) {
   addFruit(c.fruitCount || 0);
   if (bounce) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
   updateHud();
+}
+
+// ---------- boss fight: Ripper Roo ----------
+// Small rocks roll at you (jump or dodge them). A big rock now and then: SPIN into it to knock it back at Ripper Roo.
+// Every big rock that lands costs him one life on the health bar.
+const bossUI = { bar: document.getElementById('bossbar'), hp: document.getElementById('bosshp'), fade: document.getElementById('fade') };
+bossUI.hp.innerHTML = '<i></i>'.repeat(BOSS_HP);
+const boss = { root: new THREE.Group(), model: null, hp: BOSS_HP, active: false, intro: 0, stun: 0, dead: 0, t: 0, tx: 0, hopT: 0, lean: 0, flash: 0, smallT: 1, bigT: 7, rocks: [] };
+boss.root.visible = false; boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); scene.add(boss.root);
+const bossZ = () => boss.root.position.z;
+const rockGeo = new THREE.IcosahedronGeometry(1, 1);
+const rockMat = new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0xd8c8b0, flatShading: true });
+const bigRockMat = new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0xffd9a0, emissive: 0x883300, flatShading: true });
+
+// the model file stores its colours in an old "specular-glossiness" material that the loader skips, so rebuild the materials from the diffuse textures
+async function onRipper(gltf) {
+  const json = gltf.parser.json, meshes = [];
+  gltf.scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+  for (const o of meshes) {
+    const def = json.materials.find(mt => mt.name === o.material.name), ext = def && def.extensions && def.extensions.KHR_materials_pbrSpecularGlossiness;
+    const tex = ext ? await gltf.parser.getDependency('texture', ext.diffuseTexture.index) : o.material.map;
+    if (tex) { tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.anisotropy = 8; }
+    const eyes = o.material.name === 'TexOjos';
+    o.material = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x222222, alphaTest: eyes ? 0.5 : 0 });
+    o.frustumCulled = false;
+  }
+  // the file holds four poses side by side: keep just the neutral one
+  for (const n of ['RipperRoo001', 'RipperRoo', 'RipperRoo003']) { const o = gltf.scene.getObjectByName(n); if (o) o.removeFromParent(); }
+  gltf.scene.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  gltf.scene.position.set(-c.x, -box.min.y, -c.z);
+  const wrap = new THREE.Group(); wrap.add(gltf.scene); wrap.scale.setScalar(6 / size.y);   // front of the model faces +Z, toward the player
+  boss.model = wrap; boss.root.add(wrap);
+}
+loadGlb(window.__RIPPER_B64, './assets/ripper_roo.glb', onRipper, () => {});
+
+function updateBossBar() { [...bossUI.hp.children].forEach((el, i) => el.classList.toggle('lost', i >= boss.hp)); }
+function clearRocks() { for (const r of boss.rocks) scene.remove(r.mesh); boss.rocks.length = 0; }
+function spawnBoom(p, size = 1) {
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
+  ball.position.copy(p); ball.scale.setScalar(size); ball.userData = { life: 0.5 }; scene.add(ball); booms.push(ball);
+}
+function startBoss() {                       // reached the portal: fade out, drop into the arena
+  state = 'transition'; uiLockUntil = performance.now() + 900;
+  toast('LEVEL COMPLETE!'); beep(600, 0.6, 'triangle', 0.08, 600);
+  bossUI.fade.classList.add('on');
+  setTimeout(() => {
+    clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, tx: 0, hopT: 1, flash: 0, smallT: 1.5, bigT: 8 });
+    boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); boss.root.visible = true; boss.root.scale.setScalar(1);
+    checkpoint.set(0, 0, ARENA.z - 3); player.pos.set(0, 0, ARENA.z - 3); respawn(); player.hurt = 0;
+    bossUI.bar.hidden = false; updateBossBar();
+    state = 'play'; bossUI.fade.classList.remove('on'); toast('RIPPER ROO!');
+  }, 1300);
+}
+function bossReset() {                       // back to the very start of the game
+  clearRocks(); boss.active = false; boss.root.visible = false; boss.hp = BOSS_HP; boss.dead = 0;
+  bossUI.bar.hidden = true; bossUI.fade.classList.remove('on'); updateBossBar();
+}
+function spawnRock(kind) {
+  const big = kind === 'big', r = big ? 1.3 : 0.5 + Math.random() * 0.15, lim = ARENA.w / 2 - 2.2;
+  let x = big ? Math.max(-lim, Math.min(lim, player.pos.x + (Math.random() - 0.5) * 4)) : (Math.random() * 2 - 1) * lim;
+  const bigRock = boss.rocks.find(k => k.kind === 'big');
+  if (!big && bigRock && Math.abs(bigRock.mesh.position.x - x) < 3.2) x = Math.max(-lim, Math.min(lim, bigRock.mesh.position.x + (x < bigRock.mesh.position.x ? -3.4 : 3.4)));
+  const mesh = new THREE.Mesh(rockGeo, big ? bigRockMat : rockMat);
+  mesh.scale.setScalar(r); mesh.position.set(x, r, bossZ() + 2.2); mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
+  scene.add(mesh);
+  const phase = BOSS_HP - boss.hp;
+  boss.rocks.push({ mesh, kind, r, speed: big ? 5.5 + phase * 0.5 : 7 + phase * 0.9 });
+  boss.lean = 0.5;                              // Ripper Roo winds up to throw
+  if (big) toast('BIG ROCK! SPIN INTO IT!');
+}
+function hitBoss() {
+  boss.hp--; boss.stun = 1.8; boss.flash = 1.4; boss.lean = 0; boss.bigT = 6;
+  updateBossBar(); beep(180, 0.4, 'sawtooth', 0.1, -100);
+  const p = boss.root.position.clone(); p.y += 2; spawnBoom(p, 1.6); spawnDebris(p);
+  if (boss.hp <= 0) { boss.dead = 0.001; clearRocks(); toast('RIPPER ROO DEFEATED!'); }
+  else toast(`RIPPER ROO LOSES A LIFE! ${boss.hp} LEFT`);
+}
+function updateBoss(dt) {
+  boss.t += dt;
+  const bp = boss.root.position, fighting = boss.intro <= 0 && boss.dead === 0;
+  if (boss.intro > 0) boss.intro -= dt;
+  if (boss.dead > 0) {                           // defeated: spins up, blows up, then the game is won
+    boss.dead += dt; boss.root.rotation.y += dt * 14; boss.root.position.y = Math.min(boss.dead * 2.2, 4);
+    boss.root.scale.setScalar(Math.max(0.01, 1 - Math.max(0, boss.dead - 1.8) * 1.2));
+    if (Math.random() < dt * 14) { const p = bp.clone(); p.x += (Math.random() - 0.5) * 3; p.y += 1 + Math.random() * 3; spawnBoom(p, 0.8 + Math.random()); }
+    if (boss.dead > 2.6 && state === 'play') {
+      boss.root.visible = false; bossUI.bar.hidden = true; state = 'won'; uiLockUntil = performance.now() + 900; beep(600, 0.8, 'triangle', 0.09, 700);
+      showMsg('YOU DEFEATED RIPPER ROO!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
+    }
+    return;
+  }
+  // hop around the far end of the arena
+  const lim = ARENA.w / 2 - 2.5;
+  if (boss.stun > 0) boss.stun -= dt;
+  else {
+    boss.hopT -= dt; if (boss.hopT <= 0) { boss.tx = (Math.random() * 2 - 1) * lim; boss.hopT = 2 + Math.random() * 1.5; }
+    bp.x += (boss.tx - bp.x) * (1 - Math.exp(-2.2 * dt));
+  }
+  boss.flash = Math.max(0, boss.flash - dt); boss.lean = Math.max(0, boss.lean - dt);
+  const moving = Math.min(1, Math.abs(boss.tx - bp.x) * 0.8) * (boss.stun > 0 ? 0 : 1);
+  const hop = Math.abs(Math.sin(boss.t * 5)) * 0.9 * moving;
+  bp.y = hop;
+  boss.root.rotation.y = boss.stun > 0 ? boss.t * 9 : Math.atan2(player.pos.x - bp.x, player.pos.z - bp.z) * 0.7;
+  boss.root.rotation.x = -boss.lean * 0.7 + (boss.stun > 0 ? Math.sin(boss.t * 14) * 0.15 : 0);
+  boss.root.rotation.z = (boss.tx - bp.x) * -0.05 * moving;
+  boss.root.visible = boss.flash > 0 ? Math.floor(boss.t * 20) % 2 === 0 : true;
+
+  // throw rocks
+  const phase = BOSS_HP - boss.hp;
+  if (fighting && boss.stun <= 0) {
+    boss.smallT -= dt;
+    if (boss.smallT <= 0) { spawnRock('small'); boss.smallT = Math.max(0.7, 1.6 - phase * 0.22) * (0.8 + Math.random() * 0.5); }
+    if (!boss.rocks.some(r => r.kind === 'big')) { boss.bigT -= dt; if (boss.bigT <= 0) { spawnRock('big'); boss.bigT = 8; } }
+  }
+  bigRockMat.emissive.setHex(Math.floor(boss.t * 6) % 2 ? 0xcc5500 : 0x662200);
+  // rocks
+  for (let i = boss.rocks.length - 1; i >= 0; i--) {
+    const rk = boss.rocks[i];
+    if (!rk) continue;                       // the final blow clears the whole list mid-loop
+    const mp = rk.mesh.position;
+    let gone = false;
+    if (rk.kind === 'returning') {                 // a big rock you knocked back: homes in on Ripper Roo
+      mp.z -= 26 * dt; mp.x += (bp.x - mp.x) * Math.min(1, 7 * dt); rk.mesh.rotation.x -= dt * 14;
+      if (mp.z <= bp.z + 2.2) { hitBoss(); gone = true; }
+    } else {
+      mp.z += rk.speed * dt; rk.mesh.rotation.x += rk.speed * dt / rk.r;
+      if (mp.z > ARENA.z + 2) gone = true;
+      const dx = mp.x - player.pos.x, dz = mp.z - player.pos.z, dist = Math.hypot(dx, dz), low = player.pos.y < rk.r * 2;
+      const powered = player.spin > 0 || invincible > 0;
+      if (rk.kind === 'big') {
+        if (low && dist < rk.r + (powered ? 1.9 : 0.5)) {
+          if (powered) { rk.kind = 'returning'; beep(700, 0.2, 'triangle', 0.08, 300); toast('NICE HIT!'); }
+          else { hit(); spawnDebris(mp); spawnBoom(mp, 1.2); gone = true; boss.bigT = 5; }
+        }
+      } else if (low && dist < rk.r + 0.5) {
+        if (powered) beep(260, 0.12, 'square', 0.06, -80); else hit();
+        spawnDebris(mp); gone = true;
+      }
+    }
+    if (gone) { scene.remove(rk.mesh); const at = boss.rocks.indexOf(rk); if (at >= 0) boss.rocks.splice(at, 1); }
+  }
+  // touching Ripper Roo hurts too
+  if (fighting && boss.stun <= 0 && Math.hypot(bp.x - player.pos.x, bp.z - player.pos.z) < 1.7 && player.pos.y < 3.5) hit();
 }
 
 // ---------- physics ----------
@@ -688,13 +853,11 @@ function update(dt) {
     if (Math.abs(s.pos.x - player.pos.x) < 0.5 + HALF_W && Math.abs(s.pos.z - player.pos.z) < 0.5 + HALF_W &&
         player.pos.y < s.pos.y + 0.6 && player.pos.y + PLAYER_H > s.pos.y) hit();
   }
+  if (boss.active) updateBoss(dt);
   // fall
   if (player.pos.y < -10) die();
   // finish
-  if (state === 'play' && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) {
-    state = 'won'; uiLockUntil = performance.now() + 900; beep(600, 0.6, 'triangle', 0.08, 600);
-    showMsg('LEVEL COMPLETE!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
-  }
+  if (state === 'play' && !boss.active && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) startBoss();   // level done -> boss fight
 }
 
 // ---------- render loop ----------
@@ -762,13 +925,14 @@ function frame() {
     else { mt.color.setHex(0xffffff); mt.emissive.setHex(0x2a2a2a); }
   }
   // camera
-  camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
+  const bossCam = boss.active;   // arena camera sits a little higher and further back so Ripper Roo stays in view
+  camTarget.set(player.pos.x * (bossCam ? 0.4 : 0.5), Math.max(player.pos.y, -2) + (bossCam ? 5.8 : 4.8), player.pos.z + (bossCam ? 11 : 9.5));
   if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
   else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
-  camera.lookAt(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 1.2, player.pos.z - 4);
+  camera.lookAt(player.pos.x * (bossCam ? 0.4 : 0.5), Math.max(player.pos.y, -2) + (bossCam ? 1.8 : 1.2), player.pos.z - (bossCam ? 9 : 4));
 
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
