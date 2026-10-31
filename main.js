@@ -10,6 +10,7 @@ const HALF_W = 0.4, PLAYER_H = 1.8;
 const MODEL_YAW = 0; // rotate model so its face points along -Z; adjust if it faces the wrong way
 const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H tall
 const START_LIVES = 3;
+const INVINCIBLE_TIME = 15;
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -161,14 +162,13 @@ loadGlb(window.__PLAYER_B64, './assets/player.glb', onModel, placeholder);
 
 // ---------- Aku Aku (floating mask companion) ----------
 const aku = new THREE.Group(); aku.visible = false; scene.add(aku);
-const akuMats = []; let aku2 = null;
+const akuMats = [];
 loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
   const model = gltf.scene, box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const wrap = new THREE.Group(); wrap.add(model); wrap.scale.setScalar(1.9 / size.y);
   const c = box.getCenter(new THREE.Vector3()); model.position.sub(c);
   model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; for (const mt of [].concat(o.material)) { akuMats.push(mt); mt.fog = false; } } });
   aku.add(wrap);
-  aku2 = aku.clone(true); scene.add(aku2); aku2.visible = false;
 }, () => {});
 
 // ---------- input ----------
@@ -210,20 +210,20 @@ function beep(f, d = 0.1, type = 'square', vol = 0.06, slide = 0) {
 }
 
 // ---------- game state ----------
-let masks = 1, invincible = 0;
+let masks = 0, invincible = 0; // masks = Aku Aku power level 0..2 (hits he can absorb); invincible = seconds of golden Aku Aku
 let state = 'title', lives = START_LIVES, fruitCount = 0, cratesBroken = 0, totalCrates = crates.length;
 let checkpoint = new THREE.Vector3(0, 0, 0), time = 0;
 const hud = { lives: document.getElementById('lives'), fruit: document.getElementById('fruit'), crates: document.getElementById('crates'), aku: document.getElementById('aku') };
 const msg = document.getElementById('msg'), msgbody = document.getElementById('msgbody');
 function updateHud() {
   hud.lives.textContent = `♥ x${lives}`; hud.fruit.innerHTML = `<img src="${WUMPA_URL}" height="26" style="image-rendering:pixelated;vertical-align:middle"> ${fruitCount}`;
-  hud.aku.textContent = invincible > 0 ? `AKU AKU INVINCIBLE ${Math.ceil(invincible)}s` : masks > 0 ? `AKU AKU x${masks}` : '';
+  hud.aku.textContent = invincible > 0 ? `GOLDEN AKU AKU ${Math.ceil(invincible)}s` : masks > 0 ? `AKU AKU LV ${masks}/3` : '';
   hud.crates.textContent = `📦 ${cratesBroken}/${totalCrates}`;
 }
 function showMsg(title, body) {
   msg.querySelector('h1').textContent = title; msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Aku Aku crates give you a mask that blocks one hit. Collect three for a burst of invincibility.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
+showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
 function startOrRestart() {
   if (ac === undefined) beep(1, 0.01, 'sine', 0.0001);
   if (state === 'title' || state === 'over' || state === 'won') {
@@ -244,10 +244,11 @@ function hit() {
   if (player.hurt > 0.5 || invincible > 0) return;
   if (masks <= 0) return die();
   masks--; player.hurt = 1; player.vel.y = JUMP_V * 0.6; player.grounded = false;
-  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud(); toast(masks > 0 ? 'AKU AKU PROTECTED YOU!' : 'MASK LOST!');
+  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud(); toast(masks > 0 ? 'AKU AKU PROTECTED YOU!' : 'AKU AKU IS GONE!');
 }
 function die() {
   if (player.hurt > 0.5) return;
+  masks = 0; invincible = 0;
   lives--; beep(300, 0.4, 'sawtooth', 0.08, -200); updateHud();
   if (lives <= 0) { state = 'over'; showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> to retry`); return; }
   respawn();
@@ -274,7 +275,10 @@ function breakCrate(c, bounce) {
   else beep(220, 0.15, 'square', 0.07, -80);
   if (c.kind === 'aku') {
     beep(520, 0.3, 'triangle', 0.08, 500);
-    if (++masks >= 3) { masks = 0; invincible = 12; toast('AKU AKU INVINCIBLE!'); } else toast(`AKU AKU MASK x${masks}!`);
+    if (invincible > 0) invincible = INVINCIBLE_TIME;
+    else if (masks === 0) { masks = 1; toast('AKU AKU IS WITH YOU!'); }
+    else if (masks === 1) { masks = 2; toast('AKU AKU POWER UP!'); }
+    else { masks = 0; invincible = INVINCIBLE_TIME; toast('GOLDEN AKU AKU! INVINCIBLE!'); }
   }
   addFruit(c.fruitCount || 0);
   if (bounce) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
@@ -421,17 +425,20 @@ function frame() {
   shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
 
   if (finish) { finish.rotation.z += dt; }
-  // Aku Aku masks hover on either side of the player (one per mask held; a single big glowing one while invincible)
-  [[aku, -1.4, masks > 0 || invincible > 0], [aku2, 1.4, masks > 1 && invincible <= 0]].forEach(([a, side, show], i) => {
-    if (!a) return;
-    a.visible = show;
-    const target = tmp.set(player.pos.x + side, player.pos.y + 2.5 + Math.sin(time * 2.4 + i * 2) * 0.15, player.pos.z + 0.4);
-    if (!a.userData.init) { a.position.copy(target); a.userData.init = true; }
-    a.position.lerp(target, 1 - Math.exp(-8 * dt));
-    a.rotation.y = Math.sin(time * 1.5 + i) * 0.35 - player.vel.x * 0.02;
-    a.scale.setScalar(1 + (invincible > 0 ? 0.15 + Math.sin(time * 12) * 0.05 : 0));
-  });
-  for (const mt of akuMats) if (mt.emissive) mt.emissive.setHex(invincible > 0 ? (Math.floor(time * 8) % 2 ? 0x2a5577 : 0x665522) : 0x2a2a2a);
+  // Aku Aku hovers over the player's shoulder while he's with you
+  aku.visible = masks > 0 || invincible > 0;
+  const akuTarget = tmp.set(player.pos.x - 1.4, player.pos.y + 2.5 + Math.sin(time * 2.4) * 0.15, player.pos.z + 0.4);
+  if (!aku.userData.init) { aku.position.copy(akuTarget); aku.userData.init = true; }
+  aku.position.lerp(akuTarget, 1 - Math.exp(-8 * dt));
+  aku.rotation.y = Math.sin(time * 1.5) * 0.35 - player.vel.x * 0.02;
+  aku.scale.setScalar(1 + (invincible > 0 ? 0.2 + Math.sin(time * 10) * 0.05 : masks > 1 ? 0.1 : 0));
+  // tier look: 1 = normal, 2 = silver glow, golden (invincible) = gold tint + glow
+  for (const mt of akuMats) {
+    if (!mt.emissive) continue;
+    if (invincible > 0) { mt.color.setHex(0xffd24a); mt.emissive.setHex(Math.floor(time * 10) % 2 ? 0xa87c00 : 0x7a5a00); }
+    else if (masks > 1) { mt.color.setHex(0xdde6ff); mt.emissive.setHex(0x3a4a66); }
+    else { mt.color.setHex(0xffffff); mt.emissive.setHex(0x2a2a2a); }
+  }
   // camera
   camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
   camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
@@ -441,5 +448,5 @@ function frame() {
   requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (++masks >= 3) { masks = 0; invincible = 12; } } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();

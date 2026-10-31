@@ -17,3 +17,8 @@ Stomp crates and enemies, collect fruit (100 = extra life), hit checkpoint crate
 
 ## Credits
 - Aku Aku model by [anttipantti](https://sketchfab.com/Kassugamerproo), [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/), https://sketchfab.com/3d-models/aku-aku-3e3c0e0ece2c4a8bb30f5d27c1f89d4a
+
+## Aku Aku
+- You start without him. Break an Aku Aku crate (the one with his face) to summon him: he blocks hits.
+- A second crate powers him up (silver glow, blocks two hits).
+- A third crate turns him gold: you are invincible for 15 seconds, except for falling into the water.
