@@ -20,5 +20,5 @@ open('dist/game.html','w').write(h)
 # fragment (no doctype/html/head/body) for hosts that supply their own page skeleton
 style=re.search(r'<style>.*?</style>',h,re.S).group(0)
 body=re.search(r'<body>(.*)</body>',h,re.S).group(1)
-open('dist/artifact.html','w').write('<title>Retro Run</title>\n'+style+'\n'+body)
+open('dist/artifact.html','w').write('<title>Crash Bandicoot Adventure</title>\n'+style+'\n'+body)
 PY

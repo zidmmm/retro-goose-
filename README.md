@@ -1,4 +1,4 @@
-# Retro Run
+# Crash Bandicoot Adventure
 
 A Crash-style 3D platformer that runs in the browser (Three.js) using a custom player model.
 

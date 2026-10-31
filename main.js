@@ -335,7 +335,7 @@ function updateHud() {
 function showMsg(title, body) {
   msg.querySelector('h1').textContent = title; msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
+showMsg('CRASH BANDICOOT ADVENTURE', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
 function startOrRestart() {
   if (ac === undefined) beep(1, 0.01, 'sine', 0.0001);
   if (state === 'title' || state === 'over' || state === 'won') {
