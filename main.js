@@ -142,7 +142,6 @@ function placeholder() {
 }
 new GLTFLoader().load('./assets/player.glb', gltf => {
   const model = gltf.scene;
-  model.rotation.x = -Math.PI / 2;           // model is Z-up -> Y-up
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const k = PLAYER_H / size.y;
