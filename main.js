@@ -608,6 +608,21 @@ function releaseAllInput() {   // window lost focus / tab hidden: don't leave Cr
   arrowPointers.clear(); for (const b of touchButtons) b.classList.remove('down');
 }
 addEventListener('blur', releaseAllInput);
+// Safety net for a finger that iPadOS cancels without telling the page (a long press, a system gesture near the screen edge):
+// whenever the screen reports no fingers down, no arrow may stay pressed. Also reconciled on every touch event and once per frame.
+let touchesDown = 0, lastPointerType = 'mouse';
+addEventListener('pointerdown', e => { lastPointerType = e.pointerType; }, true);
+function releaseArrows() { arrowPointers.clear(); for (const b of touchButtons) if (b.dataset.key && b.dataset.key.startsWith('Arrow')) setBtn(b, false); }
+function reconcileTouches(e) {
+  touchesDown = e.touches ? e.touches.length : 0;
+  if (touchesDown === 0) { releaseArrows(); return; }
+  const held = new Set(); for (const t of e.touches) { const el = document.elementFromPoint(t.clientX, t.clientY); if (el && el.dataset && el.dataset.key && el.dataset.key.startsWith('Arrow')) held.add(el); }
+  for (const b of touchButtons) if (b.dataset.key && b.dataset.key.startsWith('Arrow') && b.classList.contains('down') && !held.has(b)) { setBtn(b, false); for (const [id, o] of [...arrowPointers]) if (o === b) arrowPointers.delete(id); }
+}
+for (const t of ['touchstart', 'touchmove', 'touchend', 'touchcancel']) addEventListener(t, reconcileTouches, { passive: true, capture: true });
+for (const t of ['pointerup', 'pointercancel']) addEventListener(t, e => { if (arrowPointers.has(e.pointerId)) moveArrowPointer(e, null); }, true);
+addEventListener('contextmenu', e => e.preventDefault());
+addEventListener('selectstart', e => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllInput(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
@@ -1859,6 +1874,7 @@ function frame() {
     if (avg > 1 / 42 && dpr > 1) { dpr = Math.max(1, dpr - 0.25); renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
     else if (avg < 1 / 58 && dpr < DPR_MAX) { dpr = Math.min(DPR_MAX, dpr + 0.25); renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
   }
+  if (lastPointerType === 'touch' && touchesDown === 0 && arrowPointers.size) releaseArrows();   // a pointer-up that never arrived must not leave an arrow stuck
   update(dt);
 
   playerRoot.position.copy(player.pos);
