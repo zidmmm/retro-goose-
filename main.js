@@ -431,6 +431,8 @@ function showMsg(title, body, label = 'PLAY') {
 }
 showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>: dodge his rocks, and spin into the big one to knock it back at him.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs (CC BY 4.0)</small>`);
 let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
+// if the browser still has audio blocked a moment after the first tap, tell the player how to turn it on
+function checkSound() { const s = audioStatus(); if (!s.muted && s.state !== 'running') toast('TAP THE SPEAKER BUTTON FOR SOUND'); }
 const muteBtn = document.getElementById('muteBtn');
 function toggleSound() { unlockEngine(); setMuted(!isMuted()); muteBtn.textContent = isMuted() ? '\uD83D\uDD07' : '\uD83D\uDD0A'; }
 muteBtn.textContent = isMuted() ? '\uD83D\uDD07' : '\uD83D\uDD0A';
@@ -441,7 +443,7 @@ function unlockAudio() {
 function startOrRestart() {
   unlockAudio();
   if (performance.now() < uiLockUntil) return;
-  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); }
+  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); setTimeout(checkSound, 900); }
   else if (state === 'over' || state === 'won') resetGame();
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
