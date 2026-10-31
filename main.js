@@ -19,15 +19,15 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x8fd3ff);
-scene.fog = new THREE.Fog(0x8fd3ff, 25, 90);
+scene.background = new THREE.Color(0x4f7a52);
+scene.fog = new THREE.Fog(0x4f7a52, 22, 85);
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 110);
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
 });
-scene.add(new THREE.HemisphereLight(0xffffff, 0x4a7a3a, 1.1));
-const sun = new THREE.DirectionalLight(0xfff2cc, 1.6);
+scene.add(new THREE.HemisphereLight(0xe6f2c8, 0x6a4a28, 1.1));
+const sun = new THREE.DirectionalLight(0xffe2a8, 1.5);
 sun.position.set(10, 20, 8); scene.add(sun);
 
 const mat = c => new THREE.MeshLambertMaterial({ color: c });
@@ -42,7 +42,7 @@ const LAYOUT = [];   // [kind, startZ, endZ] per generated section, handy for de
 
 function addBox(x, y, z, w, h, d, material, extra = {}) {
   const geo = new THREE.BoxGeometry(w, h, d);
-  if (!extra.crate) tileUV(geo, w, h, d);
+  if (!extra.crate) tileUV(geo, w, h, d, extra.wall ? 2.5 : 2, !!extra.wall);
   const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(x, y, z); scene.add(mesh);
   const s = { mesh, min: new THREE.Vector3(), max: new THREE.Vector3(), half: new THREE.Vector3(w / 2, h / 2, d / 2), ...extra };
@@ -50,6 +50,11 @@ function addBox(x, y, z, w, h, d, material, extra = {}) {
 }
 function syncBox(s) {
   s.min.copy(s.mesh.position).sub(s.half); s.max.copy(s.mesh.position).add(s.half);
+}
+// stone tiki walls flanking a wide platform (z0 -> z1, half-width halfW)
+function walls(z0, z1, halfW, h = 2.6) {
+  const d = Math.abs(z1 - z0);
+  for (const s of [-1, 1]) addBox(s * (halfW + 0.45), (h - 2) / 2, (z0 + z1) / 2, 0.9, h + 2, d, M.wall, { wall: true });
 }
 // top surface of a platform at height `top`
 function platform(x, z0, z1, w, top = 0, material = M.grass) {
@@ -85,11 +90,11 @@ function spike(x, y, z) {
 // ---------- level ----------
 function buildLevel() {
   // 1. start area
-  platform(0, 4, -22, 7);
+  platform(0, 4, -22, 7); walls(4, -22, 3.5);
   crate(-1.5, 0, -8, 'normal', 3); crate(1.5, 0, -8, 'normal', 3); crate(0, 0, -14, 'normal', 5); crate(0, 0, -11, 'aku');
   fruitLine(0, 0.9, -3, -6, 3); fruitLine(0, 0.9, -16, -20, 4);
   // 2. first gap + patrol platform
-  platform(0, -25, -42, 7);
+  platform(0, -25, -42, 7); walls(-25, -42, 3.5);
   enemy(0, 0, -31, 'x', 2.5); enemy(0, 0, -37, 'x', 2.5);
   crate(-2.5, 0, -27, 'tnt'); crate(2.5, 0, -40, 'life');
   fruit(0, 3.2, -23.5); fruitLine(2, 0.9, -28, -40, 4);
@@ -103,7 +108,7 @@ function buildLevel() {
   mv.mover = { axis: 'z', origin: -67, range: 2.2, speed: 1.1 }; movers.push(mv);
   fruitLine(0, 1.2, -65, -69, 3);
   // 5. staircase area
-  platform(0, -72, -102, 8);
+  platform(0, -72, -102, 8); walls(-72, -102, 4);
   addBox(0, 0.6, -80, 8, 1.2, 3, M.step);
   addBox(0, 1.1, -85, 8, 2.2, 3, M.step);
   crate(-2, 2.2, -85, 'normal', 5); crate(2, 2.2, -85, 'normal', 5); crate(0, 2.2, -85, 'aku');
@@ -112,7 +117,7 @@ function buildLevel() {
   fruitLine(0, 2.0, -78, -83, 3); fruitLine(0, 3.4, -88, -92, 3);
   spike(0, 0, -93);
   // 6. long arena with a wave of patrolling enemies
-  platform(0, -105, -128, 9);
+  platform(0, -105, -128, 9); walls(-105, -128, 4.5);
   crate(0, 0, -107, 'checkpoint'); crate(-3, 0, -112, 'normal', 5); crate(3, 0, -112, 'normal', 5);
   crate(0, 0, -115, 'aku'); crate(-3, 0, -121, 'normal', 5); crate(3, 0, -121, 'normal', 5);
   enemy(0, 0, -110, 'x', 3.5); enemy(0, 0, -118, 'x', 3.5); enemy(0, 0, -122, 'x', 3.5); enemy(0, 0, -125, 'x', 3.5);
@@ -149,7 +154,7 @@ function buildLevel() {
   const maybeAku = (y, z, p = 0.55) => { if (rng() < p) crate(0, y, z, 'aku'); };
   const T = {
     arena(z0) {                                      // wide platform, wave of patrolling enemies, crates
-      const len = rr(24, 30); platform(0, z0, z0 - len, 9);
+      const len = rr(24, 30); platform(0, z0, z0 - len, 9); walls(z0, z0 - len, 4.5);
       maybeCheckpoint(z0 - 1.5);
       crate(-3, 0, z0 - 5, 'normal', 4); crate(3, 0, z0 - 5, 'normal', 4); maybeAku(0, z0 - 8);
       const n = 3 + (sectionNo > 8 ? 1 : 0);
@@ -196,7 +201,7 @@ function buildLevel() {
       return z;
     },
     spikes(z0) {                                     // spike rows you have to weave through
-      const len = 26; platform(0, z0, z0 - len, 9);
+      const len = 26; platform(0, z0, z0 - len, 9); walls(z0, z0 - len, 4.5);
       maybeCheckpoint(z0 - 1.5);
       for (const [d, xs] of [[7, [-3, -1]], [13, [1, 3]], [19, [-3, -1]]]) for (const x of xs) spike(x, 0, z0 - d);
       enemy(0, 0, z0 - 10, 'x', 3); enemy(0, 0, z0 - 16, 'x', 3);
@@ -217,7 +222,7 @@ function buildLevel() {
     LAYOUT.push([kind, Math.round(startZ), Math.round(z + 3)]);
   }
   // finale
-  platform(0, z, LEVEL_END, 8);
+  platform(0, z, LEVEL_END, 8); walls(z, LEVEL_END, 4);
   crate(0, 0, z - 1.5, 'checkpoint'); crate(-2.5, 0, z - 6, 'normal', 8); crate(2.5, 0, z - 6, 'normal', 8); crate(0, 0, z - 9, 'aku');
   enemy(0, 0, z - 12, 'x', 3); enemy(0, 0, z - 16, 'x', 3); enemy(0, 0, z - 20, 'x', 3);
   fruitLine(0, 0.9, z - 3, LEVEL_END + 5, 10);
@@ -228,10 +233,16 @@ function buildLevel() {
   // scenery
   const water = new THREE.Mesh(new THREE.PlaneGeometry(500, -LEVEL_END + 300), M.water);
   water.rotation.x = -Math.PI / 2; water.position.set(0, -12, LEVEL_END / 2); scene.add(water);
-  for (let i = 0; i < Math.round(-LEVEL_END * 0.9); i++) {
-    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * (-LEVEL_END + 20), x = side * (6 + Math.random() * 18);
+  const span = -LEVEL_END + 20;
+  for (let i = 0; i < Math.round(-LEVEL_END * 0.9); i++) {          // big jungle plants either side of the trail
+    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * span, x = side * (6.5 + Math.random() * 16);
     const h = 5 + Math.random() * 6;
-    const t = new THREE.Sprite(M.tree); t.scale.set(h * 0.7, h, 1); t.position.set(x, h / 2 - 1.5, z); scene.add(t);
+    const t = new THREE.Sprite(M.tree); t.scale.set(h * 1.15, h, 1); t.position.set(x, h / 2 - 1.8, z); scene.add(t);
+  }
+  for (let i = 0; i < Math.round(-LEVEL_END * 0.35); i++) {         // leafy bushes hugging the path edge, and flowers
+    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * span, x = side * (5.3 + Math.random() * 2.5);
+    const bush = new THREE.Sprite(M.tree); const bs = 2 + Math.random() * 1.8; bush.scale.set(bs * 1.15, bs, 1); bush.position.set(x, bs / 2 - 0.3, z); scene.add(bush);
+    const f = new THREE.Sprite(Math.random() < 0.5 ? M.flowerBlue : M.flowerRed); f.scale.set(0.9, 0.9, 1); f.position.set(side * (4.9 + Math.random() * 1.2), 0.3, z + Math.random() * 3); scene.add(f);
   }
 }
 buildLevel();

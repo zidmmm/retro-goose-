@@ -18,31 +18,59 @@ function speckle(g, w, h, base, vars, chance = 0.35) {
   dot(g, 0, 0, base, w, h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (rnd() < chance) dot(g, x, y, vars[(rnd() * vars.length) | 0]);
 }
-const grassTopTex = () => canvasTex(16, 16, (g, w, h) => speckle(g, w, h, '#4aa83a', ['#3d9530', '#5cbc47', '#2f8226', '#6fcf55']));
-const dirtTex = () => canvasTex(16, 16, (g, w, h) => {
-  speckle(g, w, h, '#8a5a2c', ['#74481f', '#9c6a38', '#5e3a16']);
-  for (let i = 0; i < 5; i++) dot(g, (rnd() * 13) | 0, (rnd() * 13) | 0, '#9a9a9a', 2, 2);
+const pathTex = () => canvasTex(32, 32, (g, w, h) => {      // sandy jungle trail with a few grass tufts
+  speckle(g, w, h, '#b9783a', ['#a3672f', '#cc8d4b', '#8f5724', '#d9a05e', '#c07f40'], 0.55);
+  for (let i = 0; i < 6; i++) { const x = (rnd() * 28) | 0, y = (rnd() * 28) | 0; dot(g, x, y, '#8a5424', 3, 2); dot(g, x + 1, y, '#6e3f18', 1, 1); }
+  for (let i = 0; i < 5; i++) { const x = (rnd() * 30) | 0, y = (rnd() * 28) | 0; dot(g, x, y, '#3f8f2a', 1, 3); dot(g, x + 1, y + 1, '#5cb344', 1, 2); dot(g, x - 1, y + 1, '#2f7a20', 1, 2); }
 });
-const dirtSideTex = () => canvasTex(16, 16, (g, w, h) => {
-  speckle(g, w, h, '#8a5a2c', ['#74481f', '#9c6a38', '#5e3a16']);
-  for (let x = 0; x < w; x++) { const d = 3 + ((rnd() * 3) | 0); dot(g, x, 0, '#4aa83a', 1, d); dot(g, x, 0, '#3d9530', 1, 1); }
+const dirtTex = () => canvasTex(16, 16, (g, w, h) => {
+  speckle(g, w, h, '#7a4c24', ['#66401c', '#8c5c2e', '#52320f']);
+  for (let i = 0; i < 5; i++) dot(g, (rnd() * 13) | 0, (rnd() * 13) | 0, '#8f8f78', 2, 2);
+});
+const dirtSideTex = () => canvasTex(16, 16, (g, w, h) => {   // earth cliff with a mossy grass lip
+  speckle(g, w, h, '#7a4c24', ['#66401c', '#8c5c2e', '#52320f']);
+  for (let x = 0; x < w; x++) { const d = 3 + ((rnd() * 3) | 0); dot(g, x, 0, '#3f8f2a', 1, d); dot(g, x, 0, '#5cb344', 1, 1); dot(g, x, d - 1, '#2a6a1c', 1, 1); }
 }, { clampT: true });
+// carved stone tiki wall: teal-grey blocks with blue/orange tribal bands
+const stoneTex = () => canvasTex(32, 32, (g, w, h) => {
+  speckle(g, w, h, '#4b6a63', ['#41605a', '#567870', '#384f4a'], 0.35);
+  for (const y of [0, 16]) dot(g, 0, y, '#1d2b28', w, 1);
+  for (const [x, y] of [[0, 0], [16, 16]]) dot(g, x, y, '#1d2b28', 1, 16);
+  dot(g, 16, 0, '#1d2b28', 1, 16); dot(g, 0, 16, '#1d2b28', 1, 16);
+  for (let i = 0; i < 16; i += 2) { dot(g, 2 + i / 1.2, 4 + (i % 4), '#2f86c4', 2, 2); dot(g, 2 + i / 1.2, 8 - (i % 4), '#e0902c', 1, 2); }
+  dot(g, 20, 20, '#e8dba2', 8, 2); dot(g, 20, 24, '#2f86c4', 8, 2); dot(g, 22, 21, '#1d2b28', 1, 4); dot(g, 26, 21, '#1d2b28', 1, 4);
+  dot(g, 4, 20, '#d4382c', 3, 3); dot(g, 9, 20, '#d4382c', 3, 3); dot(g, 6, 26, '#e8dba2', 5, 2);
+});
+const mossTex = () => canvasTex(16, 16, (g, w, h) => speckle(g, w, h, '#3e5f33', ['#33512a', '#4a7340', '#5b8a4a', '#6b5a3a'], 0.5));
 const metalTex = () => canvasTex(16, 16, (g, w, h) => {
   speckle(g, w, h, '#2a9d8f', ['#23867a', '#35b3a3'], 0.2);
   dot(g, 0, 0, '#16665d', w, 1); dot(g, 0, h - 1, '#16665d', w, 1); dot(g, 0, 0, '#16665d', 1, h); dot(g, w - 1, 0, '#16665d', 1, h);
   for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) dot(g, x, y, '#c9f2ec', 1, 1);
 }, { clampT: true });
-const waterTex = () => canvasTex(32, 32, (g, w, h) => {
-  dot(g, 0, 0, '#1e6fc9', w, h);
-  for (let i = 0; i < 40; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#4a9ae8' : '#1558a8', 3 + ((rnd() * 4) | 0), 1);
+const waterTex = () => canvasTex(32, 32, (g, w, h) => {       // murky jungle floor far below the path
+  speckle(g, w, h, '#1f3a1d', ['#173014', '#2b4a26', '#25402a', '#3a3a1c'], 0.5);
+  for (let i = 0; i < 24; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#355a2c' : '#12260f', 2 + ((rnd() * 4) | 0), 1);
 });
-const treeTex = () => canvasTex(32, 48, (g) => {
-  dot(g, 13, 38, '#6d4c41', 6, 10); dot(g, 13, 38, '#4e342e', 2, 10);
-  const tiers = [[2, 18, 16], [14, 30, 13], [26, 40, 9]]; // [top, bottom, halfwidth at bottom]
-  for (const [y0, y1, hw] of tiers) for (let y = y0; y < y1; y++) {
-    const half = Math.max(1, Math.round(hw * (y - y0) / (y1 - y0)));
-    for (let x = 16 - half; x < 16 + half; x++) dot(g, x, y, x < 16 - half / 3 ? '#43a047' : (rnd() < 0.3 ? '#1b5e20' : '#2e7d32'));
+const treeTex = () => canvasTex(64, 56, (g) => {            // jungle plant: fan of drooping broad leaves
+  const bx = 32, by = 52;
+  const shades = [['#2f7d2a', '#3f9a34', '#58b84a'], ['#276b24', '#348a2d', '#4aa63e']];
+  for (let k = 0; k < 9; k++) {
+    const ang = (-80 + k * 20) * Math.PI / 180, L = 26 + ((k % 3) * 3), sh = shades[k % 2];
+    for (let s = 0; s < L; s++) {
+      const x = bx + Math.sin(ang) * s, y = by - Math.cos(ang) * s * 0.9 + s * s * 0.012 * (1 + Math.abs(Math.sin(ang)) * 2);
+      const wd = Math.max(1, Math.round(Math.sin(Math.PI * (s + 2) / (L + 4)) * 5.5));
+      for (let o = -wd; o <= wd; o++) {
+        const px = x + Math.cos(ang) * o, py = y + Math.sin(ang) * o * 0.6;
+        dot(g, Math.round(px), Math.round(py), o === 0 ? '#9ad36a' : (o < 0 ? sh[0] : (rnd() < 0.35 ? sh[2] : sh[1])));
+      }
+    }
   }
+  dot(g, 30, 46, '#5a3d22', 5, 10);
+}, { repeat: false });
+const flowerTex = (petal, centre) => canvasTex(16, 16, (g) => {
+  dot(g, 7, 8, '#2f7d2a', 2, 8);
+  for (const [x, y] of [[5, 4], [9, 4], [4, 7], [10, 7], [7, 2]]) dot(g, x, y, petal, 3, 3);
+  dot(g, 7, 5, centre, 3, 3);
 }, { repeat: false });
 const enemyTex = () => canvasTex(24, 20, (g) => {
   for (let y = 0; y < 20; y++) for (let x = 0; x < 24; x++) {
@@ -73,22 +101,24 @@ const lambert = map => new THREE.MeshLambertMaterial({ map });
 const sprite = (map, extra = {}) => new THREE.SpriteMaterial({ map, transparent: true, alphaTest: 0.4, ...extra });
 
 export function makeMaterials() {
-  const top = lambert(grassTopTex()), side = lambert(dirtSideTex()), dirt = lambert(dirtTex()), metal = lambert(metalTex());
-  const water = lambert(waterTex()); water.map.repeat.set(120, 600); water.transparent = true; water.opacity = 0.85;
+  const top = lambert(pathTex()), side = lambert(dirtSideTex()), dirt = lambert(dirtTex()), metal = lambert(metalTex());
+  const stone = lambert(stoneTex()), moss = lambert(mossTex());
+  const water = lambert(waterTex()); water.map.repeat.set(120, 600);
   return {
-    grass: [side, side, top, dirt, side, side],       // box face order: +x -x +y -y +z -z
+    grass: [side, side, top, dirt, side, side],
+    wall: [stone, stone, moss, stone, stone, stone],       // box face order: +x -x +y -y +z -z
     dirt: [dirt, dirt, dirt, dirt, dirt, dirt],
     moving: [metal, metal, metal, metal, metal, metal],
     crate: lambert(imgTex('crate')), lifeCrate: lambert(imgTex('crate_life')), tntCrate: lambert(imgTex('crate_tnt')),
     akuCrate: lambert(imgTex('aku_crate')), checkpoint: lambert(imgTex('crate_checkpoint')),
-    water, tree: sprite(treeTex()), enemy: sprite(enemyTex()), fruit: sprite(wumpaTex()),
+    water, tree: sprite(treeTex()), flowerBlue: sprite(flowerTex('#3a8fe0', '#ffd54f')), flowerRed: sprite(flowerTex('#d8344c', '#ffeb3b')), enemy: sprite(enemyTex()), fruit: sprite(wumpaTex()),
   };
 }
 
 // Repeat the texture every `t` world units instead of stretching it over a whole platform face.
 // Side faces stretch vertically so the grass fringe stays at the top edge.
-export function tileUV(geo, w, h, d, t = 2) {
-  const uv = geo.attributes.uv, dims = [[d, 1], [d, 1], [w, d], [w, d], [w, 1], [w, 1]];
+export function tileUV(geo, w, h, d, t = 2, tallSides = false) {
+  const uv = geo.attributes.uv, dims = tallSides ? [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]] : [[d, 1], [d, 1], [w, d], [w, d], [w, 1], [w, 1]];
   for (let f = 0; f < 6; f++) for (let i = 0; i < 4; i++) {
     const k = f * 4 + i; uv.setXY(k, uv.getX(k) * dims[f][0] / t, uv.getY(k) * (dims[f][1] === 1 ? 1 : dims[f][1] / t));
   }
