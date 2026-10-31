@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <title>Crash Bandicoot Adventure</title>
 <style>
   html,body{margin:0;height:100%;overflow:hidden;background:#101820;font-family:"Trebuchet MS",sans-serif;color:#fff}
@@ -12,6 +12,8 @@
   #msg h1{font-size:clamp(30px,6vw,56px);margin:0 0 12px;padding:0 16px;text-wrap:balance;color:#ffb347;text-shadow:4px 4px 0 #7a2e00}
   #msg.hidden{display:none}
   #msgbody{max-width:760px;padding:0 20px}
+  #startBtn{margin-top:18px;padding:14px 44px;font:bold 26px "Trebuchet MS",sans-serif;color:#2b1200;background:#ffb347;border:3px solid #7a2e00;border-radius:12px;box-shadow:0 5px 0 #7a2e00;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  #startBtn:active{transform:translateY(3px);box-shadow:0 2px 0 #7a2e00}
   #logo{width:min(80vw,520px);max-height:42vh;object-fit:contain;margin-bottom:8px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6))}
   html,body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   #touch{position:fixed;inset:auto 0 0 0;height:0;display:none;pointer-events:none}
@@ -38,7 +40,7 @@
   <button id="bR" class="dp" data-key="ArrowRight">&#9654;</button><button id="bD" class="dp" data-key="ArrowDown">&#9660;</button>
   <button id="bJ" data-key="Space">JUMP</button><button id="bS" data-action="spin">SPIN</button>
 </div>
-<div id="msg"><img id="logo" src="./assets/logo.png" alt="Crash Bandicoot Adventure"><h1 hidden></h1><div id="msgbody"></div></div>
+<div id="msg"><img id="logo" src="./assets/logo.png" alt="Crash Bandicoot Adventure"><h1 hidden></h1><div id="msgbody"></div><button id="startBtn" type="button">PLAY</button></div>
 <script type="importmap">{"imports":{"three":"./lib/three.module.js"}}</script>
 <script type="module" src="./main.js"></script>
 </body>

@@ -9,7 +9,7 @@ function canvasTex(w, h, draw, { repeat = true, clampT = false } = {}) {
   const c = document.createElement('canvas'); c.width = w; c.height = h;
   const g = c.getContext('2d'); draw(g, w, h);
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   if (repeat) { t.wrapS = THREE.RepeatWrapping; t.wrapT = clampT ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping; }
   return t;
 }
@@ -90,14 +90,14 @@ const enemyTex = () => canvasTex(24, 20, (g) => {
 function imgTex(name) {
   const b64 = window.__TEX_B64 && window.__TEX_B64[name];
   const t = new THREE.TextureLoader().load(b64 ? 'data:image/png;base64,' + b64 : `./assets/${name}.png`);
-  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
 
 export const WUMPA_URL = window.__WUMPA_B64 ? 'data:image/png;base64,' + window.__WUMPA_B64 : './assets/wumpa.png';
 function wumpaTex() {
   const t = new THREE.TextureLoader().load(WUMPA_URL);
-  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
   return t;
 }
 

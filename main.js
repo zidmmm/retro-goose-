@@ -14,18 +14,23 @@ const INVINCIBLE_TIME = 8;
 const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
 
 // ---------- renderer ----------
-const renderer = new THREE.WebGLRenderer({ antialias: true });
-renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+const DPR_MAX = Math.min(devicePixelRatio, 2);   // render at the screen's full resolution (up to 2x) for a clean HD look
+let dpr = DPR_MAX;
+renderer.setPixelRatio(dpr);
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
+renderer.domElement.addEventListener('webglcontextlost', e => e.preventDefault());   // lets the browser restore the context instead of leaving a black screen
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x4f7a52);
 scene.fog = new THREE.Fog(0x4f7a52, 22, 85);
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 110);
-addEventListener('resize', () => {
+function onResize() {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
-});
+}
+addEventListener('resize', onResize);
+addEventListener('orientationchange', () => setTimeout(onResize, 250));   // iPad reports the new size a moment late
 scene.add(new THREE.HemisphereLight(0xe6f2c8, 0x6a4a28, 1.1));
 const sun = new THREE.DirectionalLight(0xffe2a8, 1.5);
 sun.position.set(10, 20, 8); scene.add(sun);
@@ -86,14 +91,14 @@ function crate(x, y, z, kind = 'normal', fruitCount = 0) {
   if (kind === 'tnt') s.armed = false;
 }
 function fruit(x, y, z) {
-  const m = new THREE.Sprite(M.fruit); m.scale.set(0.95, 0.85, 1);
+  const m = new THREE.Sprite(M.fruit); m.scale.set(0.95, 0.85, 1); m.userData.dynamic = true;   // bobs every frame
   m.position.set(x, y, z); scene.add(m); fruits.push({ mesh: m, got: false, baseY: y });
 }
 function fruitLine(x, y, z0, z1, n) {
   for (let i = 0; i < n; i++) fruit(x, y, z0 + (z1 - z0) * i / (n - 1));
 }
 function enemy(x, y, z, axis, range) {
-  const g = new THREE.Sprite(M.enemy); g.scale.set(1.5, 1.25, 1);
+  const g = new THREE.Sprite(M.enemy); g.scale.set(1.5, 1.25, 1); g.userData.dynamic = true;   // patrols every frame
   g.position.set(x, y + 0.45, z); scene.add(g);
   enemies.push({ mesh: g, origin: new THREE.Vector3(x, y + 0.45, z), axis, range, t: Math.random() * 6, alive: true });
 }
@@ -105,6 +110,7 @@ function spike(x, y, z) {
   g.position.set(x, y, z); scene.add(g); spikes.push({ pos: g.position, half: new THREE.Vector3(0.5, 0.6, 0.5) });
 }
 
+function freeze(o) { o.updateMatrix(); o.matrixAutoUpdate = false; for (const c of o.children) freeze(c); }   // static object: compute its transform once
 // ---------- level ----------
 function buildLevel() {
   // 1. start area
@@ -128,7 +134,7 @@ function buildLevel() {
   // 5. hill: smooth slope up, a flat top with enemies, smooth slope back down
   platform(0, -72, -102, 8); walls(-72, -102, 4);
   ramp(0, 8, -77, 0, -83, 2.2);
-  platform(0, -83, -89, 8, 2.2);
+  addBox(0, 1.1, -86, 8, 2.2, 6, M.grass);          // solid from the ground up, so there is no gap under the top
   ramp(0, 8, -89, 2.2, -97, 0);
   crate(-2, 2.2, -86, 'normal', 5); crate(2, 2.2, -86, 'normal', 5); crate(0, 2.2, -85, 'aku');
   enemy(0, 0, -76.5, 'x', 3); enemy(0, 2.2, -88, 'x', 3); enemy(0, 0, -99, 'x', 3);
@@ -243,12 +249,13 @@ function buildLevel() {
     LAYOUT.push([kind, Math.round(startZ), Math.round(z + 3)]);
   }
   // finale
-  platform(0, z, LEVEL_END, 8); walls(z, LEVEL_END, 4);
+  const endZ = Math.min(LEVEL_END, z - 40);          // always leave room for the finale even if the last section ran long
+  platform(0, z, endZ, 8); walls(z, endZ, 4);
   crate(0, 0, z - 1.5, 'checkpoint'); crate(-2.5, 0, z - 6, 'normal', 8); crate(2.5, 0, z - 6, 'normal', 8); crate(0, 0, z - 9, 'aku');
   enemy(0, 0, z - 12, 'x', 3); enemy(0, 0, z - 16, 'x', 3); enemy(0, 0, z - 20, 'x', 3);
-  fruitLine(0, 0.9, z - 3, LEVEL_END + 5, 10);
+  fruitLine(0, 0.9, z - 3, endZ + 5, 10);
   finish = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.25, 12, 32), M.portal);
-  finish.position.set(0, 2, LEVEL_END + 6); scene.add(finish);
+  finish.position.set(0, 2, endZ + 6); scene.add(finish);
   const disc = new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), M.portal); finish.add(disc);
 
   // scenery
@@ -273,21 +280,27 @@ function buildLevel() {
   }
 }
 buildLevel();
+for (const s of solids) if (!movers.includes(s)) freeze(s.mesh);
+for (const o of scene.children) if (o.isSprite && !o.userData.dynamic) freeze(o);
 
 // ---------- player ----------
 const player = { pos: new THREE.Vector3(0, 0, 0), vel: new THREE.Vector3(), grounded: false, ground: null,
   coyote: 0, jumpBuf: 0, spin: 0, spinCd: 0, facing: Math.PI, hurt: 0 };
 const playerRoot = new THREE.Group(); scene.add(playerRoot);
 const modelHolder = new THREE.Group(); playerRoot.add(modelHolder);
-const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35 }));
+modelHolder.rotation.order = 'YXZ';   // turn to face first, then lean forward about the character's own side axis
+const shadow = new THREE.Mesh(new THREE.CircleGeometry(0.5, 16), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
 shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
 
 function placeholder() {
   const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.9, 4, 10), mat(0xff7043)); m.position.y = PLAYER_H / 2; modelHolder.add(m);
 }
 let animator = null;
+function crisp(root) {   // PS1-on-an-HD-emulator look: texels stay sharp up close, mipmaps stop shimmering at a distance
+  root.traverse(o => { if (!o.isMesh) return; for (const mt of [].concat(o.material)) for (const k of ['map', 'emissiveMap']) { const t = mt[k]; if (t) { t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestMipmapLinearFilter; t.anisotropy = 8; t.needsUpdate = true; } } });
+}
 const onModel = gltf => {
-  const model = gltf.scene;
+  const model = gltf.scene; crisp(model);
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const k = PLAYER_H * MODEL_SCALE / size.y;
@@ -314,7 +327,8 @@ const akuFace = new THREE.Vector3(), akuQuat = new THREE.Quaternion();
 const aku = new THREE.Group(); aku.visible = false; scene.add(aku);
 const akuMats = [];
 loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
-  const model = gltf.scene, box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
+  const model = gltf.scene; crisp(model);
+  const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const wrap = new THREE.Group(); wrap.add(model); wrap.scale.setScalar(1.9 / size.y);
   const c = box.getCenter(new THREE.Vector3()); model.position.sub(c);
   model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; for (const mt of [].concat(o.material)) { akuMats.push(mt); mt.fog = false; } } });
@@ -324,6 +338,7 @@ loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
 // ---------- input ----------
 const keys = {};
 addEventListener('keydown', e => {
+  unlockAudio();
   if (e.repeat) return;
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
@@ -333,25 +348,46 @@ addEventListener('keydown', e => {
 });
 // ---- on-screen touch controls (iPad / phones) ----
 if (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) document.body.classList.add('touch');
-for (const b of document.querySelectorAll('#touch button')) {
-  const press = e => {
-    e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down');
-    if (b.dataset.key) { keys[b.dataset.key] = true; if (b.dataset.key === 'Space') player.jumpBuf = JUMP_BUFFER; }
+const touchButtons = [...document.querySelectorAll('#touch button')];
+const arrowPointers = new Map();   // pointerId -> the arrow button that finger is currently on
+const setBtn = (b, on) => { b.classList.toggle('down', on); if (b.dataset.key) keys[b.dataset.key] = on; };
+function arrowUnder(e) { const el = document.elementFromPoint(e.clientX, e.clientY); return el && el.dataset && el.dataset.key && el.dataset.key.startsWith('Arrow') ? el : null; }
+function moveArrowPointer(e, b) {
+  const old = arrowPointers.get(e.pointerId);
+  if (old === b) return;
+  if (old) setBtn(old, [...arrowPointers.entries()].some(([id, o]) => id !== e.pointerId && o === old));
+  if (b) { arrowPointers.set(e.pointerId, b); setBtn(b, true); } else arrowPointers.delete(e.pointerId);
+}
+for (const b of touchButtons) {
+  const isArrow = b.dataset.key && b.dataset.key.startsWith('Arrow');
+  b.addEventListener('pointerdown', e => {
+    e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {}
+    unlockAudio();
+    if (isArrow) { moveArrowPointer(e, b); return; }
+    setBtn(b, true);
+    if (b.dataset.key === 'Space') player.jumpBuf = JUMP_BUFFER;
     if (b.dataset.action === 'spin') trySpin();
-  };
-  const release = e => { e.preventDefault(); b.classList.remove('down'); if (b.dataset.key) keys[b.dataset.key] = false; };
-  b.addEventListener('pointerdown', press);
-  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(t, release);
+  });
+  if (isArrow) b.addEventListener('pointermove', e => { if (arrowPointers.has(e.pointerId)) moveArrowPointer(e, arrowUnder(e)); });   // slide from one arrow to another without lifting
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(t, e => {
+    e.preventDefault();
+    if (isArrow) moveArrowPointer(e, null); else setBtn(b, false);
+  });
   b.addEventListener('contextmenu', e => e.preventDefault());
 }
-document.getElementById('msg').addEventListener('pointerdown', () => { if (state !== 'play') startOrRestart(); });
+function releaseAllInput() {   // window lost focus / tab hidden: don't leave Crash running with a stuck key
+  for (const k of Object.keys(keys)) keys[k] = false;
+  arrowPointers.clear(); for (const b of touchButtons) b.classList.remove('down');
+}
+addEventListener('blur', releaseAllInput);
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAllInput(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
 // ---------- sound ----------
 let ac;
 function beep(f, d = 0.1, type = 'square', vol = 0.06, slide = 0) {
   try {
-    ac ||= new AudioContext();
+    ac ||= new AudioContext(); if (ac.state === 'suspended') ac.resume();
     const o = ac.createOscillator(), g = ac.createGain();
     o.type = type; o.frequency.value = f; if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), ac.currentTime + d);
     g.gain.value = vol; g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d);
@@ -364,27 +400,54 @@ let masks = 0, invincible = 0; // masks = Aku Aku power level 0..2 (hits he can 
 let state = 'title', lives = START_LIVES, fruitCount = 0, cratesBroken = 0, totalCrates = crates.length;
 let checkpoint = new THREE.Vector3(0, 0, 0), time = 0;
 const hud = { lives: document.getElementById('lives'), fruit: document.getElementById('fruit'), crates: document.getElementById('crates'), aku: document.getElementById('aku') };
-const msg = document.getElementById('msg'), msgbody = document.getElementById('msgbody');
+const msg = document.getElementById('msg'), msgbody = document.getElementById('msgbody'), startBtn = document.getElementById('startBtn');
+startBtn.addEventListener('click', startOrRestart);
+msg.addEventListener('pointerdown', e => { if (state !== 'play' && e.target !== startBtn) startOrRestart(); });
+hud.fruit.innerHTML = `<img src="${WUMPA_URL}" height="26" style="image-rendering:pixelated;vertical-align:middle"> <span></span>`;
+const fruitNum = hud.fruit.querySelector('span');
 function updateHud() {
-  hud.lives.textContent = `♥ x${lives}`; hud.fruit.innerHTML = `<img src="${WUMPA_URL}" height="26" style="image-rendering:pixelated;vertical-align:middle"> ${fruitCount}`;
+  hud.lives.textContent = `♥ x${lives}`; fruitNum.textContent = fruitCount;
   hud.aku.textContent = invincible > 0 ? `GOLDEN AKU AKU ${Math.ceil(invincible)}s` : masks > 0 ? `AKU AKU LV ${masks}/3` : '';
   hud.crates.textContent = `📦 ${cratesBroken}/${totalCrates}`;
 }
 const GAME_TITLE = 'CRASH BANDICOOT ADVENTURE';
-function showMsg(title, body) {
+function showMsg(title, body, label = 'PLAY') {
+  startBtn.textContent = label;
   const h1 = msg.querySelector('h1'); h1.textContent = title; h1.hidden = title === GAME_TITLE;   // the logo stands in for the title text
   msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
 showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
-function startOrRestart() {
-  if (ac === undefined) beep(1, 0.01, 'sine', 0.0001);
-  if (state === 'title' || state === 'over' || state === 'won') {
-    if (state !== 'title') location.reload();
-    state = 'play'; msg.classList.add('hidden'); updateHud();
-  }
+let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
+function unlockAudio() {
+  try { ac ||= new AudioContext(); if (ac.state === 'suspended') ac.resume(); } catch {}   // iPad Safari keeps audio suspended until a tap
 }
+function startOrRestart() {
+  unlockAudio();
+  if (performance.now() < uiLockUntil) return;
+  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); }
+  else if (state === 'over' || state === 'won') resetGame();
+}
+// full in-place reset (no page reload): everything goes back to how it was at the start
+function resetGame() {
+  removeQueue.length = 0;
+  lives = START_LIVES; fruitCount = 0; cratesBroken = 0; masks = 0; invincible = 0; checkpoint.set(0, 0, 0);
+  for (const c of crates) {
+    c.broken = false; c.mesh.visible = true; c.armed = false;
+    if (c.label) { scene.remove(c.label); c.label = null; }
+    if (c.kind === 'tnt') c.mesh.material.emissive.setHex(0x000000);
+    if (!solids.includes(c)) solids.push(c);
+  }
+  for (const f of fruits) { f.got = false; f.mesh.visible = true; }
+  for (const e of enemies) { e.alive = true; e.mesh.visible = true; e.t = Math.random() * 6; }
+  for (const list of [debris, pops, booms]) { for (const o of list) scene.remove(o); list.length = 0; }
+  player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
+  state = 'play'; msg.classList.add('hidden'); updateHud();
+}
+let camSnap = true;   // jump the camera straight to the player (respawn / restart) instead of gliding across the level
 function respawn() {
-  player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.hurt = 1;
+  player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 1;
+  player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
+  camSnap = true; aku.userData.init = false;
 }
 const toastEl = document.getElementById('toast');
 let toastTimer;
@@ -402,7 +465,7 @@ function die() {
   if (player.hurt > 0.5) return;
   masks = 0; invincible = 0;
   lives--; beep(300, 0.4, 'sawtooth', 0.08, -200); updateHud();
-  if (lives <= 0) { state = 'over'; showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> to retry`); return; }
+  if (lives <= 0) { state = 'over'; uiLockUntil = performance.now() + 900; showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> or tap the button to retry`, 'TRY AGAIN'); return; }
   respawn();
 }
 function addFruit(n) { fruitCount += n; while (fruitCount >= 100) { fruitCount -= 100; lives++; beep(900, 0.3, 'triangle', 0.08, 600); } updateHud(); }
@@ -445,8 +508,7 @@ function armTnt(c, fromStomp) {
 function explodeTnt(c) {
   if (c.broken) return;
   const p = c.mesh.position.clone();
-  c.broken = true; c.mesh.visible = false; cratesBroken++; scene.remove(c.label);
-  const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
+  c.broken = true; c.mesh.visible = false; cratesBroken++; scene.remove(c.label); removeQueue.push(c);
   spawnDebris(p); spawnDebris(p);
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
   ball.position.copy(p); ball.userData = { life: 0.5 }; scene.add(ball); booms.push(ball);
@@ -461,8 +523,7 @@ function breakCrate(c, bounce) {
   if (c.broken) return;
   if (c.kind === 'tnt') return armTnt(c, bounce);
   spawnDebris(c.mesh.position);
-  c.broken = true; c.mesh.visible = false; cratesBroken++;
-  const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
+  c.broken = true; c.mesh.visible = false; cratesBroken++; removeQueue.push(c);
   if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); toast('CHECKPOINT!'); }
   else beep(220, 0.15, 'square', 0.07, -80);
   if (c.kind === 'life') { lives++; beep(900, 0.35, 'triangle', 0.09, 700); toast('1UP!'); }
@@ -490,6 +551,7 @@ function overlaps(s, p) {
 function moveAxis(axis, amount) {
   player.pos[axis] += amount;
   for (const s of solids) {
+    if (s.broken) continue;           // smashed this frame; removed from the list at the start of the next update
     const p = player.pos;
     if (s.ramp) {
       if (!(p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x && p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z)) continue;
@@ -504,13 +566,15 @@ function moveAxis(axis, amount) {
     if (axis === 'y') {
       if (amount <= 0) {
         p.y = s.max.y; player.grounded = true; player.ground = s;
-        if (player.vel.y < -1 && s.crate) { breakCrate(s, true); }
+        if (player.vel.y < -3 && s.crate) { breakCrate(s, true); }   // a real landing, not just standing on it at a low frame rate
         if (player.vel.y < 0) player.vel.y = 0;
       } else { p.y = s.min.y - PLAYER_H; player.vel.y = 0; }
     } else if (!s.crate && s.max.y - p.y <= STEP_SMALL) {
       p.y = s.max.y; player.grounded = true; player.ground = s;                         // tiny lips never stop you
     } else {
-      p[axis] = amount > 0 ? s.min[axis] - HALF_W : s.max[axis] + HALF_W;
+      // push out the way we came; when not moving along this axis (e.g. carried by a platform) take the nearest side
+      const toMin = s.min[axis] - HALF_W, toMax = s.max[axis] + HALF_W;
+      p[axis] = amount > 0 ? toMin : amount < 0 ? toMax : (p[axis] - toMin < toMax - p[axis] ? toMin : toMax);
     }
   }
 }
@@ -518,16 +582,18 @@ function moveAxis(axis, amount) {
 function snapToRamp() {
   const p = player.pos; let best = null, bestY = -Infinity;
   for (const s of solids) {
-    if (!s.ramp || !(p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x && p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z)) continue;
+    if (s.broken || !s.ramp || !(p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x && p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z)) continue;
     const surf = rampY(s, p.z), gap = p.y - surf;
     if (gap >= 0 && gap < 0.7 && surf > bestY) { best = s; bestY = surf; }
   }
   if (best) { p.y = bestY; player.grounded = true; player.ground = best; if (player.vel.y < 0) player.vel.y = 0; }
 }
 
+const removeQueue = [];
 const tmp = new THREE.Vector3();
 function update(dt) {
   time += dt;
+  if (removeQueue.length) { for (const c of removeQueue) { const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1); } removeQueue.length = 0; }
   // moving platforms
   for (const s of movers) {
     const m = s.mover, old = s.mesh.position[m.axis];
@@ -542,7 +608,7 @@ function update(dt) {
   }
   for (let i = booms.length - 1; i >= 0; i--) {
     const b = booms[i]; b.userData.life -= dt; b.scale.setScalar(1 + (0.5 - b.userData.life) * 7); b.material.opacity = Math.max(0, b.userData.life * 1.7);
-    if (b.userData.life <= 0) { scene.remove(b); booms.splice(i, 1); }
+    if (b.userData.life <= 0) { scene.remove(b); b.geometry.dispose(); b.material.dispose(); booms.splice(i, 1); }
   }
   for (let i = pops.length - 1; i >= 0; i--) {
     const s = pops[i], u = s.userData; u.life -= dt; u.v.y -= 14 * dt; s.position.addScaledVector(u.v, dt);
@@ -572,7 +638,7 @@ function update(dt) {
     player.vel.y = JUMP_V; player.coyote = 0; player.jumpBuf = 0; player.grounded = false; beep(400, 0.15, 'square', 0.04, 250);
   }
   if (!(keys.Space || keys.KeyK) && player.vel.y > 4) player.vel.y -= 40 * dt; // variable jump height
-  player.vel.y -= GRAVITY * dt;
+  player.vel.y = Math.max(player.vel.y - GRAVITY * dt, -30);   // terminal velocity: never fast enough to tunnel a 1-unit crate
 
   // ride moving platform
   const ground = player.ground;
@@ -626,15 +692,24 @@ function update(dt) {
   if (player.pos.y < -10) die();
   // finish
   if (state === 'play' && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) {
-    state = 'won'; beep(600, 0.6, 'triangle', 0.08, 600);
-    showMsg('LEVEL COMPLETE!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> to play again`);
+    state = 'won'; uiLockUntil = performance.now() + 900; beep(600, 0.6, 'triangle', 0.08, 600);
+    showMsg('LEVEL COMPLETE!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
   }
 }
 
 // ---------- render loop ----------
 const camTarget = new THREE.Vector3(), clock = new THREE.Clock();
+let perfT = 0, perfN = 0;
 function frame() {
-  const dt = Math.min(clock.getDelta(), 0.05);
+  requestAnimationFrame(frame);          // schedule first: an error below can no longer freeze the game
+  const raw = Math.min(clock.getDelta(), 0.2), dt = Math.min(raw, 0.05);
+  // adaptive resolution: if the device can't hold ~45fps, drop the render scale a step (and raise it again when there's headroom)
+  perfT += raw; perfN++;
+  if (perfT > 2) {
+    const avg = perfT / perfN; perfT = perfN = 0;
+    if (avg > 1 / 42 && dpr > 1) { dpr = Math.max(1, dpr - 0.25); renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
+    else if (avg < 1 / 58 && dpr < DPR_MAX) { dpr = Math.min(DPR_MAX, dpr + 0.25); renderer.setPixelRatio(dpr); renderer.setSize(innerWidth, innerHeight); }
+  }
   update(dt);
 
   playerRoot.position.copy(player.pos);
@@ -652,6 +727,7 @@ function frame() {
   // blob shadow
   let sy = -Infinity;
   for (const s of solids) {
+    if (s.broken) continue;
     const top = s.ramp ? rampY(s, player.pos.z) : s.max.y;
     if (player.pos.x + HALF_W > s.min.x && player.pos.x - HALF_W < s.max.x && player.pos.z + HALF_W > s.min.z && player.pos.z - HALF_W < s.max.z && top <= player.pos.y + 0.2) sy = Math.max(sy, top);
   }
@@ -660,7 +736,9 @@ function frame() {
 
   if (finish) { finish.rotation.z += dt; }
   // Aku Aku: floats at the player's shoulder looking where Crash is heading; while invincible he is worn on Crash's face like a mask
-  aku.visible = masks > 0 || invincible > 0;
+  const akuShow = masks > 0 || invincible > 0;
+  if (akuShow && !aku.visible) aku.userData.init = false;   // newly summoned: appear beside Crash, don't fly in from the last place he was
+  aku.visible = akuShow;
   const heading = modelHolder.userData.yaw ?? Math.PI;
   if (invincible > 0) {
     modelHolder.updateWorldMatrix(true, false);
@@ -685,12 +763,12 @@ function frame() {
   }
   // camera
   camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
-  camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
+  if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
+  else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
   camera.lookAt(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 1.2, player.pos.z - 4);
 
   renderer.render(scene, camera);
-  requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();

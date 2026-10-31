@@ -6,6 +6,9 @@ import * as THREE from 'three';
 
 const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 const HIP = { y: -8, z: 55, x: 12 }, SHOULDER = { y: -8, z: 100, x: 26 }, NECK = { y: -8, z: 112 };
+// pivots are shared objects: building them inside the per-vertex loop allocated thousands of objects every frame (GC stutter)
+const HIP_P = { y: HIP.y, z: HIP.z }, SH_P = { y: SHOULDER.y, z: SHOULDER.z }, NECK_P = { y: NECK.y, z: NECK.z };
+const SH_L = { x: -SHOULDER.x, z: SHOULDER.z }, SH_R = { x: SHOULDER.x, z: SHOULDER.z };
 
 export function makeAnimator(root) {
   const parts = [];
@@ -72,13 +75,13 @@ export function makeAnimator(root) {
       const { pos, rest, w, n } = part, arr = pos.array;
       for (let i = 0; i < n; i++) {
         p.set(rest[i * 3], rest[i * 3 + 1], rest[i * 3 + 2]);
-        swing(p, { y: HIP.y, z: HIP.z }, legSwing, w.legL[i]);
-        swing(p, { y: HIP.y, z: HIP.z }, legSwingR, w.legR[i]);
-        swing(p, { y: SHOULDER.y, z: SHOULDER.z }, armF, w.armL[i]);
-        swing(p, { y: SHOULDER.y, z: SHOULDER.z }, armFR, w.armR[i]);
-        abduct(p, { x: -SHOULDER.x, z: SHOULDER.z }, -1, out, w.armL[i]);
-        abduct(p, { x: SHOULDER.x, z: SHOULDER.z }, 1, out, w.armR[i]);
-        swing(p, { y: NECK.y, z: NECK.z }, headNod, w.head[i]);
+        swing(p, HIP_P, legSwing, w.legL[i]);
+        swing(p, HIP_P, legSwingR, w.legR[i]);
+        swing(p, SH_P, armF, w.armL[i]);
+        swing(p, SH_P, armFR, w.armR[i]);
+        abduct(p, SH_L, -1, out, w.armL[i]);
+        abduct(p, SH_R, 1, out, w.armR[i]);
+        swing(p, NECK_P, headNod, w.head[i]);
         if (w.legL[i] + w.legR[i] > 0.5 && p.z < minZ) minZ = p.z;
         arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z;
       }
