@@ -141,7 +141,7 @@ shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
 function placeholder() {
   const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.9, 4, 10), mat(0xff7043)); m.position.y = PLAYER_H / 2; modelHolder.add(m);
 }
-new GLTFLoader().load('./assets/player.glb', gltf => {
+const onModel = gltf => {
   const model = gltf.scene;
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
@@ -151,7 +151,14 @@ new GLTFLoader().load('./assets/player.glb', gltf => {
   model.position.set(-c.x, -box.min.y, -c.z);
   wrap.rotation.y = MODEL_YAW;
   modelHolder.add(wrap);
-}, undefined, placeholder);
+};
+
+const loader = new GLTFLoader();
+if (window.__PLAYER_B64) { // single-file build: model is embedded, no network fetch
+  const bin = atob(window.__PLAYER_B64), buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  loader.parse(buf.buffer, '', onModel, placeholder);
+} else loader.load('./assets/player.glb', onModel, undefined, placeholder);
 
 // ---------- input ----------
 const keys = {};
@@ -163,6 +170,20 @@ addEventListener('keydown', e => {
   if (['ShiftLeft', 'ShiftRight', 'KeyJ', 'KeyX'].includes(e.code)) trySpin();
   if (state !== 'play' && (e.code === 'Enter' || e.code === 'Space')) startOrRestart();
 });
+// ---- on-screen touch controls (iPad / phones) ----
+if (navigator.maxTouchPoints > 0 || 'ontouchstart' in window) document.body.classList.add('touch');
+for (const b of document.querySelectorAll('#touch button')) {
+  const press = e => {
+    e.preventDefault(); try { b.setPointerCapture(e.pointerId); } catch {} b.classList.add('down');
+    if (b.dataset.key) { keys[b.dataset.key] = true; if (b.dataset.key === 'Space') player.jumpBuf = JUMP_BUFFER; }
+    if (b.dataset.action === 'spin') trySpin();
+  };
+  const release = e => { e.preventDefault(); b.classList.remove('down'); if (b.dataset.key) keys[b.dataset.key] = false; };
+  b.addEventListener('pointerdown', press);
+  for (const t of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(t, release);
+  b.addEventListener('contextmenu', e => e.preventDefault());
+}
+document.getElementById('msg').addEventListener('pointerdown', () => { if (state !== 'play') startOrRestart(); });
 addEventListener('keyup', e => { keys[e.code] = false; });
 
 // ---------- sound ----------
@@ -189,7 +210,7 @@ function updateHud() {
 function showMsg(title, body) {
   msg.querySelector('h1').textContent = title; msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Press <kbd>Enter</kbd> to start`);
+showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons`);
 function startOrRestart() {
   if (ac === undefined) beep(1, 0.01, 'sine', 0.0001);
   if (state === 'title' || state === 'over' || state === 'won') {
