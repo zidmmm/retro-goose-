@@ -10,7 +10,7 @@ const HALF_W = 0.4, PLAYER_H = 1.8;
 const MODEL_YAW = 0; // rotate model so its face points along -Z; adjust if it faces the wrong way
 const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H tall
 const START_LIVES = 3;
-const INVINCIBLE_TIME = 15;
+const INVINCIBLE_TIME = 8;
 const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
 
 // ---------- renderer ----------
@@ -272,6 +272,7 @@ function loadGlb(b64, url, onLoad, onError) {
 loadGlb(window.__PLAYER_B64, './assets/player.glb', onModel, placeholder);
 
 // ---------- Aku Aku (floating mask companion) ----------
+const akuFace = new THREE.Vector3(), akuQuat = new THREE.Quaternion();
 const aku = new THREE.Group(); aku.visible = false; scene.add(aku);
 const akuMats = [];
 loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
@@ -592,13 +593,23 @@ function frame() {
   shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
 
   if (finish) { finish.rotation.z += dt; }
-  // Aku Aku hovers over the player's shoulder while he's with you
+  // Aku Aku: floats at the player's shoulder looking where Crash is heading; while invincible he is worn on Crash's face like a mask
   aku.visible = masks > 0 || invincible > 0;
-  const akuTarget = tmp.set(player.pos.x - 1.4, player.pos.y + 2.5 + Math.sin(time * 2.4) * 0.15, player.pos.z + 0.4);
-  if (!aku.userData.init) { aku.position.copy(akuTarget); aku.userData.init = true; }
-  aku.position.lerp(akuTarget, 1 - Math.exp(-8 * dt));
-  aku.rotation.y = Math.sin(time * 1.5) * 0.35 - player.vel.x * 0.02;
-  aku.scale.setScalar(1 + (invincible > 0 ? 0.2 + Math.sin(time * 10) * 0.05 : masks > 1 ? 0.1 : 0));
+  const heading = modelHolder.userData.yaw ?? Math.PI;
+  if (invincible > 0) {
+    modelHolder.updateWorldMatrix(true, false);
+    const face = modelHolder.localToWorld(akuFace.set(0, 2.15, 1.0));           // in front of the snout, at head height
+    aku.position.lerp(face, 1 - Math.exp(-30 * dt));
+    modelHolder.getWorldQuaternion(akuQuat); aku.quaternion.slerp(akuQuat, 1 - Math.exp(-30 * dt));
+    aku.scale.setScalar(0.7 + Math.sin(time * 10) * 0.03);
+  } else {
+    const side = tmp.set(player.pos.x - 1.4, player.pos.y + 2.5 + Math.sin(time * 2.4) * 0.15, player.pos.z + 0.4);
+    if (!aku.userData.init) { aku.position.copy(side); aku.userData.init = true; }
+    aku.position.lerp(side, 1 - Math.exp(-8 * dt));
+    aku.rotation.y = heading + Math.sin(time * 1.5) * 0.1;                         // faces the way Crash is going (model front is +Z)
+    aku.rotation.x = aku.rotation.z = 0;
+    aku.scale.setScalar(masks > 1 ? 1.1 : 1);
+  }
   // tier look: 1 = normal, 2 = silver glow, golden (invincible) = gold tint + glow
   for (const mt of akuMats) {
     if (!mt.emissive) continue;

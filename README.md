@@ -21,7 +21,7 @@ Stomp crates and enemies, collect fruit (100 = extra life), hit checkpoint crate
 ## Aku Aku
 - You start without him. Break an Aku Aku crate (the one with his face) to summon him: he blocks hits.
 - A second crate powers him up (silver glow, blocks two hits).
-- A third crate turns him gold: you are invincible for 15 seconds, except for falling into the water.
+- A third crate turns him gold: you are invincible for 8 seconds (Aku Aku sits on Crash's face like a mask), except for falling into the water.
 
 ## Crates
 - Plain crate: always drops at least 1 Wumpa when smashed.
