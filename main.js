@@ -10,7 +10,7 @@ const COYOTE = 0.1, JUMP_BUFFER = 0.12;
 const HALF_W = 0.4, PLAYER_H = 1.8;
 const MODEL_YAW = 0; // rotate model so its face points along -Z; adjust if it faces the wrong way
 const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H tall
-const START_LIVES = 3;
+const START_LIVES = 5;
 const INVINCIBLE_TIME = 8;
 const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
 const BOSS_HP = 5;                                   // Ripper Roo's lives (shown on the health bar)
@@ -145,7 +145,7 @@ function buildChase(c) {
   const cfg = c.cfg, rng = makeRng(c.kind === 'fire' ? 777 : 31337), rr = (a, b) => a + rng() * (b - a), z0 = cfg.z0;
   platform(0, z0 - 45, z0 + 14, 8); walls(z0 - 45, z0 + 14, 4, 3);           // start pad (the boulder waits behind you)
   let n = 0;
-  const cp = zz => { if (n % 4 === 0) crate(0, 0, zz, 'checkpoint'); };
+  const cp = zz => { if (n % 3 === 0) crate(0, 0, zz, 'checkpoint'); };
   const aku = (zz, p = 0.5) => { if (rng() < p) crate(rng() < 0.5 ? -2.6 : 2.6, 0, zz, 'aku'); };
   const life = zz => { if (rng() < 0.3) crate(0, 0, zz, 'life'); };
   const SEC = {
@@ -261,8 +261,8 @@ function crumbleSlab(x, y, z, w = 3.4, d = 3.4) {   // a stone slab over the lav
 function buildTemple() {
   const rng = makeRng(90210), rr = (a, b) => a + rng() * (b - a), z0 = TEMPLE.z0;
   let n = 0;
-  const cp = zz => { if (n % 3 === 0) crate(0, 0, zz, 'checkpoint'); };
-  const aku = (zz, p = 0.55) => { if (rng() < p) crate(rng() < 0.5 ? -2.8 : 2.8, 0, zz, 'aku'); };
+  const cp = zz => { if (n % 2 === 0) crate(0, 0, zz, 'checkpoint'); };
+  const aku = (zz, p = 0.7) => { if (rng() < p) crate(rng() < 0.5 ? -2.8 : 2.8, 0, zz, 'aku'); };
   const life = zz => { if (rng() < 0.3) crate(0, 0, zz, 'life'); };
   const tnt = (x, zz, p = 0.4) => { if (rng() < p) crate(x, 0, zz, 'tnt'); };
   const braziers = (z, len, hw, h) => { for (let d = 5; d < len; d += 11) { torch(-hw - 0.45, h + 0.9, z - d); torch(hw + 0.45, h + 0.9, z - d); } };
@@ -393,7 +393,7 @@ function buildLevel() {
   const rng = () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
   const rr = (a, b) => a + rng() * (b - a);
   let sectionNo = 0;
-  const maybeCheckpoint = z => { if (sectionNo % 4 === 0) crate(0, 0, z, 'checkpoint'); };
+  const maybeCheckpoint = z => { if (sectionNo % 3 === 0) crate(0, 0, z, 'checkpoint'); };
   const maybeLife = (x, y, z, p = 0.3) => { if (rng() < p) crate(x, y, z, 'life'); };
   const maybeTnt = (x, z, p = 0.5) => { if (rng() < p) crate(x, 0, z, 'tnt'); };
   const maybeAku = (y, z, p = 0.55) => { if (rng() < p) crate(0, y, z, 'aku'); };
@@ -704,7 +704,7 @@ function respawn() {
     const s = cortex.pads.find(q => q.pad.state === 'up') || cortex.pads[0]; if (s.pad.state !== 'up') { s.pad.state = 'up'; s.pad.top = 0.9; s.broken = false; s.mesh.visible = true; }
     checkpoint.set(s.pad.x, 0.9, s.pad.z);
   }
-  player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 1;
+  player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 2;
   player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
   camSnap = true; aku.userData.init = false;
   const ac = activeChase();
@@ -967,7 +967,7 @@ function updateBoss(dt) {
       if (fighting && boss.want) {
         const big = boss.want === 'big';
         a = boss.act = { kind: 'throw', rock: boss.want, t: 0, dur: big ? 1.45 : 1.05, rel: big ? 0.6 : 0.55, h: big ? 3.3 : 2, released: false };
-        if (big) boss.bigT = 8; else boss.smallT = Math.max(0.3, 1.0 - phase * 0.16);
+        if (big) boss.bigT = 8; else boss.smallT = Math.max(0.6, 1.5 - phase * 0.16);
         boss.want = null;
       } else {
         const x1 = (Math.random() * 2 - 1) * lim;
@@ -1070,7 +1070,7 @@ function updateChase(c, dt) {
   const b = c.boulder, R = chaserR(c), bp = b.position, cfg = c.cfg;
   c.t += dt;
   const lead = player.pos.z - bp.z, progress = Math.min(1, Math.max(0, (player.pos.z - cfg.z0) / cfg.len));
-  let v = (c.kind === 'fire' ? 7.6 : 7.3) + progress * 0.9;      // a touch slower than Crash, and faster later on
+  let v = (c.kind === 'fire' ? 6.9 : 6.6) + progress * 0.8;      // a touch slower than Crash, and faster later on
   if (lead > 24) v += 2.5; else if (lead < 9) v -= 0.5;         // rubber band: never hopelessly far, never unfairly close
   if (c.stun > 0) { c.stun -= dt; v *= 0.15; }
   bp.z += v * dt;
@@ -1211,7 +1211,7 @@ function fireBlast(gold = false) {
   const mesh = new THREE.Mesh(blastGeo, gold ? goldMat : blastMat), glow = new THREE.Mesh(blastGeo, gold ? goldGlow : blastGlow); glow.scale.setScalar(gold ? 2.3 : 1.9); mesh.add(glow);
   mesh.scale.setScalar(gold ? 1.3 : 1);
   mesh.position.copy(gunPt); scene.add(mesh);
-  c.blasts.push({ mesh, vel: dir.multiplyScalar(c.stage === 2 ? 14 : 11), kind: 'shot', gold, life: 4 });
+  c.blasts.push({ mesh, vel: dir.multiplyScalar(c.stage === 2 ? 12 : 9.5), kind: 'shot', gold, life: 4 });
   sfx('zap'); c.recoil = 0.3;
   if (gold && !c.goldTold) { c.goldTold = true; toast('SPIN THE GOLD ZAPS BACK AT HIM!'); }
 }
@@ -1288,7 +1288,7 @@ function updateCortex(dt) {
     charge = Math.min(1, p / 0.5);
     if (a.fired === 0 && p >= 0.5) { fireBlast(a.gold); a.fired = 1; }
     if (a.shots === 2 && a.fired === 1 && p >= 0.72) { fireBlast(); a.fired = 2; }
-    if (p >= 1) { c.act = null; c.shootT = (c.stage === 2 ? 0.8 : 1.4) * (0.8 + Math.random() * 0.5); }
+    if (p >= 1) { c.act = null; c.shootT = (c.stage === 2 ? 1.1 : 1.8) * (0.8 + Math.random() * 0.5); }
   } else if (c.stun > 0) c.act = null;
   if (c.recoil > 0) { P.aimDir.y += c.recoil * 1.6; P.aimDir.normalize(); lean = -0.18 * (c.recoil / 0.3); squash = 1 + 0.06 * (c.recoil / 0.3); }
   if (c.seq) { const s = c.seq; P.aimDir.copy(idleAim); P.aim = 0.3; P.leverDir.copy(leverUp).lerp(leverDown, Math.min(1, Math.max(0, (s.t - 1.0) / 0.5))).normalize(); P.lever = Math.min(1, s.t / 0.9); lean = 0.15 * P.lever; }
@@ -1348,7 +1348,7 @@ function startChase2() {
 function enterChase2() { enterChaseStage(chase2); }
 function updateJets(dt) {
   for (const j of fireJets) {
-    const t = (time + j.phase) % j.period, tOn = j.period - 1.2, on = t >= tOn, warn = !on && t >= tOn - 0.7;
+    const t = (time + j.phase) % j.period, tOn = j.period - 1.0, on = t >= tOn, warn = !on && t >= tOn - 0.9;
     j.glow.material.color.setHex(on ? 0xffee88 : warn ? (Math.floor(time * 12) % 2 ? 0xff2200 : 0xffaa22) : 0x7a2a10);
     if (on && !j.on && Math.abs(j.z - player.pos.z) < 28) sfx('flame');
     j.on = on;
@@ -1361,7 +1361,7 @@ function updateCrumbles(dt) {
   for (const s of crumbles) {
     const c = s.crumble;
     if (c.state === 'solid') { if (player.grounded && player.ground === s) { c.state = 'shake'; c.t = 0; sfx('tick'); } }
-    else if (c.state === 'shake') { c.t += dt; s.mesh.position.x = c.x + Math.sin(c.t * 70) * 0.07; if (c.t > 0.55) { c.state = 'fall'; c.t = 0; s.broken = true; sfx('padCollapse'); } }
+    else if (c.state === 'shake') { c.t += dt; s.mesh.position.x = c.x + Math.sin(c.t * 70) * 0.07; if (c.t > 0.85) { c.state = 'fall'; c.t = 0; s.broken = true; sfx('padCollapse'); } }
     else if (c.state === 'fall') { c.t += dt; s.mesh.position.y = c.y - c.t * c.t * 14; if (c.t > 0.9) { s.mesh.visible = false; c.state = 'gone'; c.t = 0; } }
     else if (c.state === 'gone') { c.t += dt; if (c.t > 3) { c.state = 'back'; c.t = 0; s.mesh.position.set(c.x, c.y - 1.5, c.z); s.mesh.visible = true; } }
     else if (c.state === 'back') { c.t += dt / 0.6; s.mesh.position.y = c.y - 1.5 * (1 - Math.min(1, c.t)); if (c.t >= 1) { c.state = 'solid'; s.mesh.position.set(c.x, c.y, c.z); s.broken = false; syncBox(s); } }
@@ -1422,7 +1422,7 @@ function fireUkaShot(spirit) {
   if (spirit) { mesh = new THREE.Sprite(spiritMat); mesh.scale.set(3.2, 3.2, 1); const core = new THREE.Sprite(spiritCoreMat); core.scale.set(0.45, 0.45, 1); mesh.add(core); }
   else { mesh = new THREE.Sprite(TW.flame); mesh.scale.set(2.4, 3, 1); }
   mesh.position.copy(gunPt); scene.add(mesh);
-  u.projectiles.push({ mesh, vel: dir.multiplyScalar(u.stage === 2 ? 15 : 12), kind: 'shot', spirit, life: 4.5 });
+  u.projectiles.push({ mesh, vel: dir.multiplyScalar(u.stage === 2 ? 12.5 : 10), kind: 'shot', spirit, life: 4.5 });
   sfx(spirit ? 'zap' : 'fireball'); u.recoil = 0.35;
   if (spirit && !u.spiritTold) { u.spiritTold = true; toast('SPIN THE BLUE SPIRITS BACK AT HIM!'); }
 }
@@ -1448,7 +1448,7 @@ function updateLanes(dt) {
   for (const l of u.lanes) {
     if (l.state === 'idle') continue;
     l.t += dt;
-    if (l.state === 'warn') { l.glow.material.color.setHex(Math.floor(l.t * 10) % 2 ? 0xff2200 : 0xffaa22); l.glow.material.opacity = 0.4; if (l.t > 1.3) { l.state = 'fire'; l.t = 0; sfx('flame'); } }
+    if (l.state === 'warn') { l.glow.material.color.setHex(Math.floor(l.t * 10) % 2 ? 0xff2200 : 0xffaa22); l.glow.material.opacity = 0.4; if (l.t > 1.6) { l.state = 'fire'; l.t = 0; sfx('flame'); } }
     else {
       l.glow.material.color.setHex(0xffcc44); l.glow.material.opacity = 0.85;
       l.flames.forEach((f, i) => { f.visible = true; const k = Math.min(1, l.t / 0.15) * Math.min(1, (1.7 - l.t) / 0.25), s = (2.4 + Math.sin(time * 18 + i * 1.7) * 0.3) * k; f.scale.set(s, s * 1.25, 1); f.position.y = 0.5 + s * 0.55; });
@@ -1481,13 +1481,13 @@ function updateUka(dt) {
   u.root.position.set(rx, 8.6 + Math.sin(u.t * 1.8) * 0.35 + rise, UKA.z - UKA.d + 4.5);
   u.root.rotation.set(0, Math.atan2(player.pos.x - rx, 14) * 0.5 + (u.stun > 0 ? Math.sin(u.t * 18) * 0.5 : 0), u.stun > 0 ? Math.sin(u.t * 14) * 0.18 : Math.cos(u.sweep) * 0.08);
   // ---- attack: wind up (he swells and glows), then spit a fireball or a spirit orb ----
-  if (fighting && u.stun <= 0 && !u.act) { u.shootT -= dt; if (u.shootT <= 0) { u.shotN++; const spirit = u.shotN % 3 === 0; u.act = { t: 0, dur: u.stage === 2 ? 1.0 : 1.3, fired: 0, spirit, shots: !spirit && u.stage === 2 && Math.random() < 0.5 ? 2 : 1 }; } }
+  if (fighting && u.stun <= 0 && !u.act) { u.shootT -= dt; if (u.shootT <= 0) { u.shotN++; const spirit = u.shotN % 3 === 0; u.act = { t: 0, dur: u.stage === 2 ? 1.0 : 1.3, fired: 0, spirit, shots: !spirit && u.stage === 2 && Math.random() < 0.3 ? 2 : 1 }; } }
   let charge = 0; const a = u.act;
   if (a && u.stun <= 0) {
     a.t += dt; const p = a.t / a.dur; charge = Math.min(1, p / 0.6);
     if (a.fired === 0 && p >= 0.6) { fireUkaShot(a.spirit); a.fired = 1; }
     if (a.shots === 2 && a.fired === 1 && p >= 0.8) { fireUkaShot(false); a.fired = 2; }
-    if (p >= 1) { u.act = null; u.shootT = (u.stage === 2 ? 0.9 : 1.5) * (0.8 + Math.random() * 0.5); }
+    if (p >= 1) { u.act = null; u.shootT = (u.stage === 2 ? 1.3 : 2.0) * (0.8 + Math.random() * 0.5); }
   } else if (u.stun > 0) u.act = null;
   const blue = a && a.spirit;
   if (u.model) u.model.scale.setScalar(u.baseScale * (1 + charge * 0.08 + u.recoil * 0.1));

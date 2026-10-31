@@ -53,7 +53,7 @@ Beating Dr. Neo Cortex ends World 1 and opens the burning temples: a dusk sky, l
 Crash's collision is a flat disc at his feet (like the original trilogy), not a box. Corners are round, so he slides around crates, walls and ledge corners instead of catching on them. He can still stand with his centre slightly past a platform edge.
 
 ## Game Over
-If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, the Dr. Neo Cortex fight, the temple, the fire chase, or the Uka Uka fight) with 3 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
+If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, the Dr. Neo Cortex fight, the temple, the fire chase, or the Uka Uka fight) with 5 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
 
 ## Start sequence
 The game opens with "Retro Goose presents" (your hand-drawn logo), then the game logo and a PLAY button, then the world map with a START button; START teleports Crash to level 1. Tap the logo to skip the intro. Add `?nomap` or `?nointro` to skip it.
