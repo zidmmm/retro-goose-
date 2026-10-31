@@ -6,6 +6,7 @@ const SPEED = 8, GRAVITY = 32, JUMP_V = 12.5, SPIN_TIME = 0.5, SPIN_COOLDOWN = 0
 const COYOTE = 0.1, JUMP_BUFFER = 0.12;
 const HALF_W = 0.4, PLAYER_H = 1.8;
 const MODEL_YAW = 0; // rotate model so its face points along -Z; adjust if it faces the wrong way
+const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H tall
 const START_LIVES = 3;
 
 // ---------- renderer ----------
@@ -144,7 +145,7 @@ new GLTFLoader().load('./assets/player.glb', gltf => {
   const model = gltf.scene;
   model.updateMatrixWorld(true);
   const box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
-  const k = PLAYER_H / size.y;
+  const k = PLAYER_H * MODEL_SCALE / size.y;
   const wrap = new THREE.Group(); wrap.add(model); wrap.scale.setScalar(k);
   const c = box.getCenter(new THREE.Vector3());
   model.position.set(-c.x, -box.min.y, -c.z);
@@ -352,11 +353,11 @@ function frame() {
     if (player.pos.x + HALF_W > s.min.x && player.pos.x - HALF_W < s.max.x && player.pos.z + HALF_W > s.min.z && player.pos.z - HALF_W < s.max.z && s.max.y <= player.pos.y + 0.2) sy = Math.max(sy, s.max.y);
   }
   shadow.visible = sy > -Infinity; shadow.position.set(player.pos.x, sy + 0.02, player.pos.z);
-  shadow.scale.setScalar(Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
+  shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
 
   if (finish) { finish.rotation.z += dt; }
   // camera
-  camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.2, player.pos.z + 8.5);
+  camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
   camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
   camera.lookAt(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 1.2, player.pos.z - 4);
 
