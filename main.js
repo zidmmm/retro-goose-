@@ -202,7 +202,7 @@ function buildLevel() {
   let z = -206, prev = '';
   while (z > LEVEL_END + 40) {
     sectionNo++;
-    let kind; do { kind = order[(rng() * order.length) | 0]; } while (kind === prev);
+    let kind; do { kind = order[(rng() * order.length) | 0]; } while (kind === prev || (kind === 'ride' && prev === 'plateau'));
     prev = kind;
     // every section starts 3 past the previous platform's end; 'ride' uses that gap for its moving platform
     z = T[kind](z) - 3;
