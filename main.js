@@ -468,7 +468,7 @@ function respawn() {
   player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.spinCd = 0; player.hurt = 1;
   player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
   camSnap = true; aku.userData.init = false;
-  if (boss.active && boss.dead === 0) { clearRocks(); boss.intro = Math.max(boss.intro, 1.5); boss.bigT = Math.max(boss.bigT, 6); }   // fresh start in the arena
+  if (boss.active && boss.dead === 0) { clearRocks(); boss.act = null; boss.want = null; boss.intro = Math.max(boss.intro, 1.5); boss.bigT = Math.max(boss.bigT, 6); }   // fresh start in the arena
 }
 const toastEl = document.getElementById('toast');
 let toastTimer;
@@ -566,7 +566,10 @@ function breakCrate(c, bounce) {
 // Every big rock that lands costs him one life on the health bar.
 const bossUI = { bar: document.getElementById('bossbar'), hp: document.getElementById('bosshp'), fade: document.getElementById('fade') };
 bossUI.hp.innerHTML = '<i></i>'.repeat(BOSS_HP);
-const boss = { root: new THREE.Group(), model: null, hp: BOSS_HP, active: false, intro: 0, stun: 0, dead: 0, t: 0, tx: 0, hopT: 0, lean: 0, flash: 0, smallT: 1, bigT: 7, rocks: [] };
+const boss = { root: new THREE.Group(), model: null, anim: null, baseScale: 1, hp: BOSS_HP, active: false, intro: 0, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1, bigT: 7, rocks: [] };
+boss.root.rotation.order = 'YXZ';   // turn to face first, then pitch/roll about his own axes
+const bossShadow = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0, transparent: true, opacity: 0.35, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }));
+bossShadow.rotation.x = -Math.PI / 2; bossShadow.visible = false; scene.add(bossShadow);
 boss.root.visible = false; boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); scene.add(boss.root);
 const bossZ = () => boss.root.position.z;
 const rockGeo = new THREE.IcosahedronGeometry(1, 1);
@@ -577,21 +580,70 @@ const bigRockMat = new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0x
 async function onRipper(gltf) {
   const json = gltf.parser.json, meshes = [];
   gltf.scene.traverse(o => { if (o.isMesh) meshes.push(o); });
+  let colourImage = null;
   for (const o of meshes) {
     const def = json.materials.find(mt => mt.name === o.material.name), ext = def && def.extensions && def.extensions.KHR_materials_pbrSpecularGlossiness;
     const tex = ext ? await gltf.parser.getDependency('texture', ext.diffuseTexture.index) : o.material.map;
     if (tex) { tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.minFilter = THREE.NearestMipmapLinearFilter; tex.anisotropy = 8; }
     const eyes = o.material.name === 'TexOjos';
+    if (!eyes && tex) colourImage = tex.image;
     o.material = new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide, emissive: 0x222222, alphaTest: eyes ? 0.5 : 0 });
     o.frustumCulled = false;
   }
   // the file holds four poses side by side: keep just the neutral one
   for (const n of ['RipperRoo001', 'RipperRoo', 'RipperRoo003']) { const o = gltf.scene.getObjectByName(n); if (o) o.removeFromParent(); }
   gltf.scene.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(gltf.scene), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
-  gltf.scene.position.set(-c.x, -box.min.y, -c.z);
-  const wrap = new THREE.Group(); wrap.add(gltf.scene); wrap.scale.setScalar(6 / size.y);   // front of the model faces +Z, toward the player
-  boss.model = wrap; boss.root.add(wrap);
+  // bake each mesh's transform into its vertices so every part shares one coordinate frame, then animate the parts (legs, head, tongue) per vertex
+  const inner = new THREE.Group(), parts = [];
+  gltf.scene.traverse(o => { if (o.isMesh) parts.push(o); });
+  for (const o of parts) { o.geometry.applyMatrix4(o.matrixWorld); o.removeFromParent(); o.position.set(0, 0, 0); o.rotation.set(0, 0, 0); o.scale.set(1, 1, 1); inner.add(o); }
+  const box = new THREE.Box3().setFromObject(inner), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  inner.position.set(-c.x, -box.min.y, -c.z);
+  const wrap = new THREE.Group(); wrap.add(inner);
+  boss.baseScale = 6 / size.y; wrap.scale.setScalar(boss.baseScale);   // front of the model faces +Z, toward the player; feet sit at the origin
+  boss.model = wrap; boss.anim = makeRooAnimator(parts, colourImage, c.x); boss.root.add(wrap);
+}
+// Ripper Roo is one rigid mesh. Weight each vertex by where it is (legs low, head high, tongue = the pink texels) and bend those parts each frame.
+function makeRooAnimator(parts, image, cx) {
+  const sstep = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  let px = null;
+  if (image) { const cv = document.createElement('canvas'); cv.width = image.width; cv.height = image.height; const g = cv.getContext('2d'); g.drawImage(image, 0, 0); px = { g, w: image.width, h: image.height }; }
+  const data = parts.map(o => {
+    const pos = o.geometry.attributes.position, uv = o.geometry.attributes.uv, n = pos.count, rest = Float32Array.from(pos.array);
+    const leg = new Float32Array(n), head = new Float32Array(n), tongue = new Uint8Array(n);
+    for (let i = 0; i < n; i++) {
+      const y = rest[i * 3 + 1];
+      leg[i] = 1 - sstep(6.5, 9.5, y); head[i] = sstep(15, 17.5, y);
+      if (px && uv && o.material.map && o.material.name === 'Colores') {
+        const d = px.g.getImageData(Math.min(px.w - 1, Math.floor(uv.getX(i) * px.w)), Math.min(px.h - 1, Math.floor(uv.getY(i) * px.h)), 1, 1).data;
+        if (d[0] > 200 && d[1] < 150 && d[2] < 160 && y > 9 && y < 18.5) tongue[i] = 1;   // the pink tongue hanging down his front
+      }
+    }
+    return { pos, rest, leg, head, tongue, n };
+  });
+  const HIP = { y: 8.5, z: -3 }, NECK = { y: 16, z: -1 };
+  function rot(arr, i, piv, th, w) {   // rotate vertex i about the x axis through `piv`; th>0 pitches the front down
+    if (!w || !th) return;
+    const a = th * w, c = Math.cos(a), s = Math.sin(a), dy = arr[i * 3 + 1] - piv.y, dz = arr[i * 3 + 2] - piv.z;
+    arr[i * 3 + 1] = piv.y + dy * c - dz * s; arr[i * 3 + 2] = piv.z + dy * s + dz * c;
+  }
+  return { update(P, t) {
+    for (const d of data) {
+      const arr = d.pos.array;
+      for (let i = 0; i < d.n; i++) {
+        arr[i * 3] = d.rest[i * 3]; arr[i * 3 + 1] = d.rest[i * 3 + 1]; arr[i * 3 + 2] = d.rest[i * 3 + 2];
+        rot(arr, i, HIP, -P.tuck, d.leg[i]);          // legs fold forward and up under him in the air
+        rot(arr, i, NECK, P.nod, d.head[i]);          // head nods
+        if (d.tongue[i]) {                            // tongue swings; the lower it hangs the more it swings, and it streams upward when he rises
+          const k = Math.max(0, Math.min(1.2, (17.5 - arr[i * 3 + 1]) / 7));
+          arr[i * 3] += Math.sin(t * 9 + arr[i * 3 + 1] * 0.8) * P.tongue * k;
+          arr[i * 3 + 2] += Math.cos(t * 7 + arr[i * 3 + 1] * 0.6) * P.tongue * 0.5 * k - P.flutter * k * 2;
+          arr[i * 3 + 1] += P.flutter * k * 3;
+        }
+      }
+      d.pos.needsUpdate = true;
+    }
+  } };
 }
 loadGlb(window.__RIPPER_B64, './assets/ripper_roo.glb', onRipper, () => {});
 
@@ -606,7 +658,7 @@ function startBoss() {                       // reached the portal: fade out, dr
   toast('LEVEL COMPLETE!'); beep(600, 0.6, 'triangle', 0.08, 600);
   bossUI.fade.classList.add('on');
   setTimeout(() => {
-    clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, tx: 0, hopT: 1, flash: 0, smallT: 1.5, bigT: 8 });
+    clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1.5, bigT: 8 });
     boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); boss.root.visible = true; boss.root.scale.setScalar(1);
     checkpoint.set(0, 0, ARENA.z - 3); player.pos.set(0, 0, ARENA.z - 3); respawn(); player.hurt = 0;
     bossUI.bar.hidden = false; updateBossBar();
@@ -614,24 +666,25 @@ function startBoss() {                       // reached the portal: fade out, dr
   }, 1300);
 }
 function bossReset() {                       // back to the very start of the game
-  clearRocks(); boss.active = false; boss.root.visible = false; boss.hp = BOSS_HP; boss.dead = 0;
+  clearRocks(); boss.active = false; boss.root.visible = false; bossShadow.visible = false; boss.hp = BOSS_HP; boss.dead = 0; boss.act = null; boss.want = null;
   bossUI.bar.hidden = true; bossUI.fade.classList.remove('on'); updateBossBar();
 }
 function spawnRock(kind) {
-  const big = kind === 'big', r = big ? 1.3 : 0.5 + Math.random() * 0.15, lim = ARENA.w / 2 - 2.2;
-  let x = big ? Math.max(-lim, Math.min(lim, player.pos.x + (Math.random() - 0.5) * 4)) : (Math.random() * 2 - 1) * lim;
+  const big = kind === 'big', r = big ? 1.3 : 0.5 + Math.random() * 0.15, lim = ARENA.w / 2 - 2.2, clamp = v => Math.max(-lim, Math.min(lim, v));
+  const startX = clamp(boss.root.position.x);                    // rocks leave from where Ripper Roo is standing
+  let tx = big ? clamp(player.pos.x + (Math.random() - 0.5) * 4) : clamp(startX + (Math.random() - 0.5) * 3);
   const bigRock = boss.rocks.find(k => k.kind === 'big');
-  if (!big && bigRock && Math.abs(bigRock.mesh.position.x - x) < 3.2) x = Math.max(-lim, Math.min(lim, bigRock.mesh.position.x + (x < bigRock.mesh.position.x ? -3.4 : 3.4)));
+  if (!big && bigRock && Math.abs(bigRock.tx - tx) < 3.2) tx = clamp(bigRock.tx + (tx < bigRock.tx ? -3.4 : 3.4));
   const mesh = new THREE.Mesh(rockGeo, big ? bigRockMat : rockMat);
-  mesh.scale.setScalar(r); mesh.position.set(x, r, bossZ() + 2.2); mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
+  mesh.scale.setScalar(r); mesh.position.set(startX, r, bossZ() + 2.2); mesh.rotation.set(Math.random() * 6, Math.random() * 6, 0);
   scene.add(mesh);
   const phase = BOSS_HP - boss.hp;
-  boss.rocks.push({ mesh, kind, r, speed: big ? 5.5 + phase * 0.5 : 7 + phase * 0.9 });
-  boss.lean = 0.5;                              // Ripper Roo winds up to throw
+  boss.rocks.push({ mesh, kind, r, tx, speed: big ? 5.5 + phase * 0.5 : 7 + phase * 0.9 });   // tx: the lane it rolls toward
+  beep(kind === 'big' ? 160 : 320, 0.15, 'square', 0.05, 120);
   if (big) toast('BIG ROCK! SPIN INTO IT!');
 }
 function hitBoss() {
-  boss.hp--; boss.stun = 1.8; boss.flash = 1.4; boss.lean = 0; boss.bigT = 6;
+  boss.hp--; boss.stun = 1.8; boss.flash = 1.4; boss.bigT = 6; boss.want = null; boss.act = null;
   updateBossBar(); beep(180, 0.4, 'sawtooth', 0.1, -100);
   const p = boss.root.position.clone(); p.y += 2; spawnBoom(p, 1.6); spawnDebris(p);
   if (boss.hp <= 0) { boss.dead = 0.001; clearRocks(); toast('RIPPER ROO DEFEATED!'); }
@@ -639,11 +692,11 @@ function hitBoss() {
 }
 function updateBoss(dt) {
   boss.t += dt;
-  const bp = boss.root.position, fighting = boss.intro <= 0 && boss.dead === 0;
+  const bp = boss.root.position, fighting = boss.intro <= 0 && boss.dead === 0, lim = ARENA.w / 2 - 2.5, phase = BOSS_HP - boss.hp;
   if (boss.intro > 0) boss.intro -= dt;
   if (boss.dead > 0) {                           // defeated: spins up, blows up, then the game is won
     boss.dead += dt; boss.root.rotation.y += dt * 14; boss.root.position.y = Math.min(boss.dead * 2.2, 4);
-    boss.root.scale.setScalar(Math.max(0.01, 1 - Math.max(0, boss.dead - 1.8) * 1.2));
+    boss.root.scale.setScalar(Math.max(0.01, 1 - Math.max(0, boss.dead - 1.8) * 1.2)); bossShadow.visible = false;
     if (Math.random() < dt * 14) { const p = bp.clone(); p.x += (Math.random() - 0.5) * 3; p.y += 1 + Math.random() * 3; spawnBoom(p, 0.8 + Math.random()); }
     if (boss.dead > 2.6 && state === 'play') {
       boss.root.visible = false; bossUI.bar.hidden = true; state = 'won'; uiLockUntil = performance.now() + 900; beep(600, 0.8, 'triangle', 0.09, 700);
@@ -651,31 +704,70 @@ function updateBoss(dt) {
     }
     return;
   }
-  // hop around the far end of the arena
-  const lim = ARENA.w / 2 - 2.5;
-  if (boss.stun > 0) boss.stun -= dt;
-  else {
-    boss.hopT -= dt; if (boss.hopT <= 0) { boss.tx = (Math.random() * 2 - 1) * lim; boss.hopT = 2 + Math.random() * 1.5; }
-    bp.x += (boss.tx - bp.x) * (1 - Math.exp(-2.2 * dt));
-  }
-  boss.flash = Math.max(0, boss.flash - dt); boss.lean = Math.max(0, boss.lean - dt);
-  const moving = Math.min(1, Math.abs(boss.tx - bp.x) * 0.8) * (boss.stun > 0 ? 0 : 1);
-  const hop = Math.abs(Math.sin(boss.t * 5)) * 0.9 * moving;
-  bp.y = hop;
-  boss.root.rotation.y = boss.stun > 0 ? boss.t * 9 : Math.atan2(player.pos.x - bp.x, player.pos.z - bp.z) * 0.7;
-  boss.root.rotation.x = -boss.lean * 0.7 + (boss.stun > 0 ? Math.sin(boss.t * 14) * 0.15 : 0);
-  boss.root.rotation.z = (boss.tx - bp.x) * -0.05 * moving;
-  boss.root.visible = boss.flash > 0 ? Math.floor(boss.t * 20) % 2 === 0 : true;
+  boss.flash = Math.max(0, boss.flash - dt);
 
-  // throw rocks
-  const phase = BOSS_HP - boss.hp;
-  if (fighting && boss.stun <= 0) {
-    boss.smallT -= dt;
-    if (boss.smallT <= 0) { spawnRock('small'); boss.smallT = Math.max(0.7, 1.6 - phase * 0.22) * (0.8 + Math.random() * 0.5); }
-    if (!boss.rocks.some(r => r.kind === 'big')) { boss.bigT -= dt; if (boss.bigT <= 0) { spawnRock('big'); boss.bigT = 8; } }
+  // what does he want to do? (rocks are thrown from a jump, so the timers only *request* a throw)
+  if (fighting) {
+    boss.smallT -= dt; if (boss.smallT <= 0 && !boss.want) boss.want = 'small';
+    const bigBusy = boss.rocks.some(r => r.kind === 'big') || (boss.act && boss.act.rock === 'big');
+    if (!bigBusy) { boss.bigT -= dt; if (boss.bigT <= 0) boss.want = 'big'; }
   }
-  bigRockMat.emissive.setHex(Math.floor(boss.t * 6) % 2 ? 0xcc5500 : 0x662200);
+  // behaviour: idle -> hop to a new spot / jump-and-throw -> idle ... (stun interrupts)
+  let a = boss.act;
+  if (boss.stun > 0) { boss.stun -= dt; if (!a || a.kind !== 'stun') a = boss.act = { kind: 'stun', t: 0 }; }
+  else if (a && a.kind === 'stun') a = boss.act = null;
+  if (!a) {
+    boss.idleT -= dt;
+    if (boss.idleT <= 0) {
+      if (fighting && boss.want) {
+        const big = boss.want === 'big';
+        a = boss.act = { kind: 'throw', rock: boss.want, t: 0, dur: big ? 1.45 : 1.05, rel: big ? 0.6 : 0.55, h: big ? 3.3 : 2, released: false };
+        if (big) boss.bigT = 8; else boss.smallT = Math.max(0.3, 1.0 - phase * 0.16);
+        boss.want = null;
+      } else {
+        const x1 = (Math.random() * 2 - 1) * lim;
+        a = boss.act = { kind: 'hop', t: 0, dur: 0.72 + Math.min(0.35, Math.abs(x1 - bp.x) * 0.04), x0: bp.x, x1, h: 1.5 };
+      }
+    }
+  }
+  // pose for this frame: squash/stretch (sy), jump height (lift), lean (pitch), roll (tilt), legs folded (tuck), head nod, tongue swing/flutter
+  const P = { lift: 0, sy: 1 + Math.sin(boss.t * 3) * 0.02, lean: 0, tilt: 0, tuck: 0, nod: Math.sin(boss.t * 2) * 0.06, tongue: 0.7, flutter: 0 };
+  let yaw = Math.atan2(player.pos.x - bp.x, player.pos.z - bp.z) * 0.7;
+  if (a) {
+    a.t += dt;
+    const p = a.dur ? Math.min(1, a.t / a.dur) : 0;
+    if (a.kind === 'hop') {
+      if (p < 0.18) { const k = p / 0.18; P.sy = 1 - 0.22 * Math.sin(k * Math.PI / 2); P.tuck = 0.25 * k; P.lean = 0.12 * k; }                              // crouch
+      else if (p < 0.82) {                                                                                                                               // airborne
+        const k = (p - 0.18) / 0.64;
+        bp.x = a.x0 + (a.x1 - a.x0) * (k * k * (3 - 2 * k)); P.lift = a.h * 4 * k * (1 - k);
+        P.sy = 1.13 - 0.13 * Math.min(1, k * 2); P.tuck = 0.95 * Math.sin(Math.min(1, k * 1.6) * Math.PI / 2) * (1 - 0.4 * k); P.lean = 0.2 - 0.3 * k;
+        P.tilt = -(a.x1 - a.x0) * 0.025 * Math.sin(k * Math.PI); P.flutter = k < 0.5 ? -0.25 : 0.3; P.nod = -0.2 * (1 - k);
+      } else { const k = (p - 0.82) / 0.18; bp.x = a.x1; P.sy = 1 - 0.24 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.lean = 0.15 * (1 - k); P.nod = 0.25 * Math.sin(k * Math.PI); } // landing squash
+    } else if (a.kind === 'throw') {
+      if (p < 0.22) { const k = p / 0.22; P.sy = 1 - 0.26 * Math.sin(k * Math.PI / 2); P.lean = -0.5 * k; P.tuck = 0.3 * k; P.nod = -0.3 * k; P.tongue = 1.2; }   // crouch and wind up, leaning back
+      else if (p < 0.88) {
+        const rise = Math.min(1, (p - 0.22) / (a.rel - 0.22)), fall = p > a.rel ? (p - a.rel) / (0.88 - a.rel) : 0;
+        P.lift = a.h * (p <= a.rel ? Math.sin(rise * Math.PI / 2) : Math.cos(fall * Math.PI / 2));
+        P.sy = 1.15 - 0.12 * fall; P.tuck = 0.5 + 0.5 * Math.sin(rise * Math.PI / 2) - 0.5 * fall;
+        P.lean = p <= a.rel ? -0.5 + 1.0 * rise : 0.5 * (1 - fall); P.nod = p <= a.rel ? -0.3 + 0.7 * rise : 0.4 * (1 - fall);
+        P.flutter = p <= a.rel ? -0.3 : 0.4; P.tongue = 1.4;
+        if (p >= a.rel && !a.released) { a.released = true; spawnRock(a.rock); }                                                                            // the rock leaves his hands at the top of the jump
+      } else { const k = (p - 0.88) / 0.12; P.sy = 1 - 0.3 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.nod = 0.3 * Math.sin(k * Math.PI); }                // heavy landing
+    } else if (a.kind === 'stun') {
+      yaw = boss.t * 9; P.sy = 1 + Math.sin(a.t * 18) * 0.08; P.lean = Math.sin(a.t * 12) * 0.2; P.lift = Math.abs(Math.sin(a.t * 6)) * 0.35; P.nod = Math.sin(a.t * 10) * 0.3; P.tongue = 1.6; P.flutter = 0.3;
+    }
+    if (a.dur && a.t >= a.dur) { boss.act = null; boss.idleT = 0.12 + Math.random() * 0.35; }
+  }
+  bp.y = P.lift;
+  boss.root.rotation.set(P.lean, yaw, P.tilt);
+  if (boss.model) { const sxz = 1 / Math.sqrt(P.sy); boss.model.scale.set(boss.baseScale * sxz, boss.baseScale * P.sy, boss.baseScale * sxz); }
+  if (boss.anim) boss.anim.update(P, boss.t);
+  boss.root.visible = boss.flash > 0 ? Math.floor(boss.t * 20) % 2 === 0 : true;
+  bossShadow.visible = true; bossShadow.position.set(bp.x, 0.03, bp.z); bossShadow.scale.setScalar(Math.max(0.5, 1 - P.lift * 0.14) * 1.6);   // shadow shrinks as he jumps
+
   // rocks
+  bigRockMat.emissive.setHex(Math.floor(boss.t * 6) % 2 ? 0xcc5500 : 0x662200);
   for (let i = boss.rocks.length - 1; i >= 0; i--) {
     const rk = boss.rocks[i];
     if (!rk) continue;                       // the final blow clears the whole list mid-loop
@@ -685,7 +777,7 @@ function updateBoss(dt) {
       mp.z -= 26 * dt; mp.x += (bp.x - mp.x) * Math.min(1, 7 * dt); rk.mesh.rotation.x -= dt * 14;
       if (mp.z <= bp.z + 2.2) { hitBoss(); gone = true; }
     } else {
-      mp.z += rk.speed * dt; rk.mesh.rotation.x += rk.speed * dt / rk.r;
+      mp.z += rk.speed * dt; mp.x += (rk.tx - mp.x) * Math.min(1, 2.2 * dt); rk.mesh.rotation.x += rk.speed * dt / rk.r;
       if (mp.z > ARENA.z + 2) gone = true;
       const dx = mp.x - player.pos.x, dz = mp.z - player.pos.z, dist = Math.hypot(dx, dz), low = player.pos.y < rk.r * 2;
       const powered = player.spin > 0 || invincible > 0;
@@ -701,8 +793,8 @@ function updateBoss(dt) {
     }
     if (gone) { scene.remove(rk.mesh); const at = boss.rocks.indexOf(rk); if (at >= 0) boss.rocks.splice(at, 1); }
   }
-  // touching Ripper Roo hurts too
-  if (fighting && boss.stun <= 0 && Math.hypot(bp.x - player.pos.x, bp.z - player.pos.z) < 1.7 && player.pos.y < 3.5) hit();
+  // touching Ripper Roo hurts too (not while he is dizzy)
+  if (fighting && boss.stun <= 0 && Math.hypot(bp.x - player.pos.x, bp.z - player.pos.z) < 1.7 && player.pos.y < 3.5 && bp.y < 1.2) hit();
 }
 
 // ---------- physics ----------
