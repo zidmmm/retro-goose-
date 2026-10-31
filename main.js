@@ -125,8 +125,9 @@ function fruit(x, y, z) {
 function fruitLine(x, y, z0, z1, n) {
   for (let i = 0; i < n; i++) fruit(x, y, z0 + (z1 - z0) * i / (n - 1));
 }
+let enemyMat = M.enemy;                         // level 1 has crabs; the desert levels (level 2 and World 2) have scorpions
 function enemy(x, y, z, axis, range) {
-  const g = new THREE.Sprite(M.enemy); g.scale.set(1.5, 1.25, 1); g.userData.dynamic = true;   // patrols every frame
+  const g = new THREE.Sprite(enemyMat); g.scale.set(1.5, 1.25, 1); g.userData.dynamic = true;   // patrols every frame
   g.position.set(x, y + 0.45, z); scene.add(g);
   enemies.push({ mesh: g, origin: new THREE.Vector3(x, y + 0.45, z), axis, range, t: Math.random() * 6, alive: true });
 }
@@ -479,8 +480,8 @@ function buildLevel() {
 
   // scenery
   buildArena();
-  buildChase(chase); buildArena2(); stageScenery();
-  useTheme('temple'); buildTemple(); buildChase(chase2); buildUkaArena(); stageScenery2(); useTheme('jungle');   // World 2 is built with the temple materials
+  enemyMat = M.scorpion; buildChase(chase); enemyMat = M.enemy; buildArena2(); stageScenery();
+  enemyMat = M.scorpion; useTheme('temple'); buildTemple(); buildChase(chase2); buildUkaArena(); stageScenery2(); useTheme('jungle'); enemyMat = M.enemy;   // World 2 is built with the temple materials
   const worldLen = -WORLD_END + 300;
   const water = new THREE.Mesh(new THREE.PlaneGeometry(500, worldLen), M.water);
   M.water.map.repeat.set(120, Math.round(worldLen / 2.4));

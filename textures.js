@@ -112,6 +112,16 @@ const fireWallTex = () => canvasTex(32, 32, (g, w, h) => {         // tileable w
   for (let x = 0; x < w; x++) { const top = 8 + ((Math.sin(x * 0.7) * 5 + rnd() * 6) | 0); dot(g, x, top, '#ffa21c', 1, h - top); dot(g, x, top + 5, '#ffd84a', 1, h - top - 5); }
   for (let i = 0; i < 30; i++) dot(g, (rnd() * 30) | 0, (rnd() * 30) | 0, '#fff2a8', 1, 2);
 });
+const scorpionTex = () => canvasTex(28, 22, (g) => {          // a desert scorpion: sandy shell, claws up front, curled tail with a stinger
+  const B = '#6b3a14', D = '#2e1604', L = '#a8662a';
+  for (let y = 10; y < 18; y++) for (let x = 7; x < 21; x++) { const dx = (x - 14) / 7, dy = (y - 14) / 4; if (dx * dx + dy * dy < 1) dot(g, x, y, y < 13 ? L : rnd() < 0.2 ? D : B); }
+  for (const lx of [9, 12, 16, 19]) { dot(g, lx, 18, D, 1, 3); dot(g, lx + (lx < 14 ? -1 : 1), 20, D, 1, 1); }
+  dot(g, 3, 8, B, 4, 3); dot(g, 1, 6, B, 3, 3); dot(g, 1, 6, D, 1, 1); dot(g, 3, 11, D, 3, 1);       // left claw
+  dot(g, 3, 13, B, 4, 3); dot(g, 1, 15, B, 3, 3); dot(g, 3, 16, D, 3, 1);                              // right claw
+  for (const [x, y] of [[21, 12], [23, 10], [24, 7], [23, 4], [20, 2], [17, 2]]) dot(g, x, y, B, 2, 2); // curled tail
+  dot(g, 15, 3, '#ffffff', 1, 1); dot(g, 14, 4, '#d8341c', 1, 2);                                        // stinger
+  for (const x of [9, 12]) { dot(g, x, 10, '#ffffff', 2, 2); dot(g, x + 1, 11, '#000000', 1, 1); }
+}, { repeat: false });
 const enemyTex = () => canvasTex(24, 20, (g) => {
   for (let y = 0; y < 20; y++) for (let x = 0; x < 24; x++) {
     const dx = (x - 12) / 8.5, dy = (y - 12) / 5.5;
@@ -161,7 +171,7 @@ export function makeMaterials() {
     moving: [metal, metal, metal, metal, metal, metal],
     crate: lambert(imgTex('crate')), lifeCrate: lambert(imgTex('crate_life')), tntCrate: lambert(imgTex('crate_tnt')),
     akuCrate: lambert(imgTex('aku_crate')), checkpoint: lambert(imgTex('crate_checkpoint')),
-    water, tree: sprite(treeTex()), flowerBlue: sprite(flowerTex('#3a8fe0', '#ffd54f')), flowerRed: sprite(flowerTex('#d8344c', '#ffeb3b')), enemy: sprite(enemyTex()), fruit: sprite(wumpaTex()),
+    water, tree: sprite(treeTex()), flowerBlue: sprite(flowerTex('#3a8fe0', '#ffd54f')), flowerRed: sprite(flowerTex('#d8344c', '#ffeb3b')), enemy: sprite(enemyTex()), scorpion: sprite(scorpionTex()), fruit: sprite(wumpaTex()),
   };
 }
 
