@@ -47,9 +47,13 @@ const metalTex = () => canvasTex(16, 16, (g, w, h) => {
   dot(g, 0, 0, '#16665d', w, 1); dot(g, 0, h - 1, '#16665d', w, 1); dot(g, 0, 0, '#16665d', 1, h); dot(g, w - 1, 0, '#16665d', 1, h);
   for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) dot(g, x, y, '#c9f2ec', 1, 1);
 }, { clampT: true });
-const waterTex = () => canvasTex(32, 32, (g, w, h) => {       // murky jungle floor far below the path
-  speckle(g, w, h, '#1f3a1d', ['#173014', '#2b4a26', '#25402a', '#3a3a1c'], 0.5);
-  for (let i = 0; i < 24; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#355a2c' : '#12260f', 2 + ((rnd() * 4) | 0), 1);
+const waterTex = () => canvasTex(32, 32, (g, w, h) => {       // leafy canopy far below the path
+  speckle(g, w, h, '#245a22', ['#1b4a1a', '#2f7a2b'], 0.5);
+  for (let i = 0; i < 60; i++) {
+    const x = (rnd() * 30) | 0, y = (rnd() * 30) | 0, c = ['#3a8a31', '#4fa83f', '#1c4a1b', '#2f7a2b'][(rnd() * 4) | 0];
+    dot(g, x, y, c, 3, 2); dot(g, x + 1, y - 1, c, 1, 1);
+  }
+  for (let i = 0; i < 14; i++) dot(g, (rnd() * 30) | 0, (rnd() * 30) | 0, '#7acb5b', 2, 1);
 });
 const treeTex = () => canvasTex(64, 56, (g) => {            // jungle plant: fan of drooping broad leaves
   const bx = 32, by = 52;

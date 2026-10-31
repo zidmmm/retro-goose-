@@ -56,6 +56,24 @@ function walls(z0, z1, halfW, h = 2.6) {
   const d = Math.abs(z1 - z0);
   for (const s of [-1, 1]) addBox(s * (halfW + 0.45), (h - 2) / 2, (z0 + z1) / 2, 0.9, h + 2, d, M.wall, { wall: true });
 }
+// smooth slope: surface goes from height yA at zA to yB at zB (zB < zA); collision follows the surface
+function ramp(x, w, zA, yA, zB, yB) {
+  const dz = zB - zA, dy = yB - yA, L = Math.hypot(dy, dz), phi = Math.atan2(dy, -dz), th = 2;
+  const geo = new THREE.BoxGeometry(w, th, L); tileUV(geo, w, th, L);
+  const mesh = new THREE.Mesh(geo, M.grass);
+  mesh.rotation.x = phi;
+  mesh.position.set(x, (yA + yB) / 2 - Math.cos(phi) * th / 2, (zA + zB) / 2 - Math.sin(phi) * th / 2);
+  scene.add(mesh);
+  const s = { mesh, min: new THREE.Vector3(x - w / 2, Math.min(yA, yB) - th, zB), max: new THREE.Vector3(x + w / 2, Math.max(yA, yB), zA), ramp: { zA, yA, zB, yB } };
+  solids.push(s); return s;
+}
+function rampY(s, z) {
+  const r = s.ramp, t = Math.min(1, Math.max(0, (z - r.zA) / (r.zB - r.zA)));
+  return r.yA + t * (r.yB - r.yA);
+}
+function rampFruit(zA, yA, zB, yB, n) {
+  for (let i = 0; i < n; i++) { const t = i / (n - 1); fruit(0, yA + (yB - yA) * t + 0.9, zA + (zB - zA) * t); }
+}
 // top surface of a platform at height `top`
 function platform(x, z0, z1, w, top = 0, material = M.grass) {
   const d = Math.abs(z1 - z0), h = 2;
@@ -107,15 +125,15 @@ function buildLevel() {
   const mv = addBox(0, -1, -67, 3.4, 2, 3.4, M.moving);
   mv.mover = { axis: 'z', origin: -67, range: 2.2, speed: 1.1 }; movers.push(mv);
   fruitLine(0, 1.2, -65, -69, 3);
-  // 5. staircase area
+  // 5. hill: smooth slope up, a flat top with enemies, smooth slope back down
   platform(0, -72, -102, 8); walls(-72, -102, 4);
-  addBox(0, 0.6, -80, 8, 1.2, 3, M.step);
-  addBox(0, 1.1, -85, 8, 2.2, 3, M.step);
-  crate(-2, 2.2, -85, 'normal', 5); crate(2, 2.2, -85, 'normal', 5); crate(0, 2.2, -85, 'aku');
-  enemy(0, 0, -76, 'x', 3); enemy(0, 0, -90, 'x', 3);
-  enemy(0, 0, -96, 'x', 3);
-  fruitLine(0, 2.0, -78, -83, 3); fruitLine(0, 3.4, -88, -92, 3);
-  spike(0, 0, -93);
+  ramp(0, 8, -77, 0, -83, 2.2);
+  platform(0, -83, -89, 8, 2.2);
+  ramp(0, 8, -89, 2.2, -97, 0);
+  crate(-2, 2.2, -86, 'normal', 5); crate(2, 2.2, -86, 'normal', 5); crate(0, 2.2, -85, 'aku');
+  enemy(0, 0, -76.5, 'x', 3); enemy(0, 2.2, -88, 'x', 3); enemy(0, 0, -99, 'x', 3);
+  rampFruit(-77, 0, -83, 2.2, 3); fruitLine(0, 3.1, -84, -88, 3); rampFruit(-89, 2.2, -97, 0, 4);
+  spike(0, 0, -101);
   // 6. long arena with a wave of patrolling enemies
   platform(0, -105, -128, 9); walls(-105, -128, 4.5);
   crate(0, 0, -107, 'checkpoint'); crate(-3, 0, -112, 'normal', 5); crate(3, 0, -112, 'normal', 5);
@@ -135,14 +153,15 @@ function buildLevel() {
   crate(0, 0, -150.5, 'checkpoint'); crate(0, 0, -152, 'aku');
   for (const z of [-155, -163, -171]) { spike(0, 0, z); fruit(0, 2.3, z); }
   enemy(0, 0, -159, 'z', 1.6); enemy(0, 0, -167, 'z', 1.6); enemy(0, 0, -175, 'z', 1.6);
-  // 9. climb to a raised plateau
-  platform(0, -181, -187, 8);
-  addBox(0, 0.6, -185.5, 8, 1.2, 3, M.step);
-  addBox(0, 1.2, -195, 8, 2.4, 16, M.step);
-  crate(-2.5, 2.4, -192, 'normal', 8); crate(2.5, 2.4, -192, 'normal', 8); crate(0, 2.4, -196, 'aku');
-  enemy(0, 2.4, -190, 'x', 3); enemy(0, 2.4, -194, 'x', 3); enemy(0, 2.4, -199, 'x', 3);
-  spike(-2, 2.4, -200); spike(2, 2.4, -200);
-  fruitLine(0, 3.4, -188, -202, 7);
+  // 9. long hill: up a smooth slope, across a plateau, down another slope
+  platform(0, -181, -185, 8);
+  ramp(0, 8, -185, 0, -195, 2.4);
+  platform(0, -195, -207, 8, 2.4);
+  ramp(0, 8, -207, 2.4, -217, 0);
+  crate(-2.5, 2.4, -199, 'normal', 8); crate(2.5, 2.4, -199, 'normal', 8); crate(0, 2.4, -201, 'aku');
+  enemy(0, 2.4, -198, 'x', 3); enemy(0, 2.4, -203, 'x', 3);
+  spike(-2, 2.4, -205.5); spike(2, 2.4, -205.5);
+  rampFruit(-185, 0, -195, 2.4, 5); fruitLine(0, 3.4, -196, -206, 5); rampFruit(-207, 2.4, -217, 0, 5);
   // 10+. generated sections: the rest of the level is assembled from templates (seeded, so it is the same every run)
   let seed = 20241031;
   const rng = () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -180,16 +199,18 @@ function buildLevel() {
       enemy(0, 0, z0 - 14, 'x', 2.2);
       return z0 - 19;
     },
-    plateau(z0) {                                    // step up onto a raised block full of enemies, drop off the far end
-      platform(0, z0, z0 - 6, 8);
-      addBox(0, 0.6, z0 - 4.5, 8, 1.2, 3, M.step);
-      addBox(0, 1.2, z0 - 13, 8, 2.4, 14, M.step);
-      maybeCheckpoint(z0 - 1.5); maybeAku(2.4, z0 - 9);
-      crate(-2.5, 2.4, z0 - 11, 'normal', 6); crate(2.5, 2.4, z0 - 11, 'normal', 6); maybeLife(0, 2.4, z0 - 12.5);
-      enemy(0, 2.4, z0 - 10, 'x', 3); enemy(0, 2.4, z0 - 14, 'x', 3);
-      spike(-2.2, 2.4, z0 - 17); spike(2.2, 2.4, z0 - 17);
-      fruitLine(0, 3.4, z0 - 8, z0 - 18, 5);
-      return z0 - 20;
+    plateau(z0) {                                    // hill: smooth slope up, flat top with enemies, smooth slope down
+      const H = rng() < 0.5 ? 2.4 : 3.4;
+      platform(0, z0, z0 - 4, 8);
+      ramp(0, 8, z0 - 4, 0, z0 - 14, H);
+      platform(0, z0 - 14, z0 - 26, 8, H);
+      ramp(0, 8, z0 - 26, H, z0 - 36, 0);
+      maybeCheckpoint(z0 - 1.5); maybeAku(H, z0 - 18);
+      crate(-2.5, H, z0 - 17, 'normal', 6); crate(2.5, H, z0 - 17, 'normal', 6); maybeLife(0, H, z0 - 23);
+      enemy(0, H, z0 - 20, 'x', 3); enemy(0, H, z0 - 24, 'x', 3);
+      spike(-2.2, H, z0 - 25); spike(2.2, H, z0 - 25);
+      rampFruit(z0 - 4, 0, z0 - 14, H, 4); fruitLine(0, H + 0.9, z0 - 15, z0 - 25, 5); rampFruit(z0 - 26, H, z0 - 36, 0, 4);
+      return z0 - 36;
     },
     stones(z0) {                                     // hop across a line of small islands
       let z = z0; const xs = [0, 1.3, -1.3, 1.0, -1.0, 0];
@@ -211,7 +232,7 @@ function buildLevel() {
     },
   };
   const order = ['arena', 'bridge', 'plateau', 'ride', 'spikes', 'stones'];
-  let z = -206, prev = '';
+  let z = -220, prev = '';
   while (z > LEVEL_END + 40) {
     sectionNo++;
     let kind; do { kind = order[(rng() * order.length) | 0]; } while (kind === prev || (kind === 'ride' && prev === 'plateau'));
@@ -232,8 +253,14 @@ function buildLevel() {
 
   // scenery
   const water = new THREE.Mesh(new THREE.PlaneGeometry(500, -LEVEL_END + 300), M.water);
-  water.rotation.x = -Math.PI / 2; water.position.set(0, -12, LEVEL_END / 2); scene.add(water);
+  water.rotation.x = -Math.PI / 2; water.position.set(0, -9, LEVEL_END / 2); scene.add(water);
   const span = -LEVEL_END + 20;
+  for (let z = 14; z > LEVEL_END - 24; z -= 2.2) {                 // a thick bush canopy below the path hides the drop
+    for (let k = 0; k < 4; k++) {
+      const x = (Math.random() - 0.5) * 34, bs = 3.5 + Math.random() * 3, y = -3 - Math.random() * 5;
+      const b = new THREE.Sprite(M.tree); b.scale.set(bs * 1.15, bs, 1); b.position.set(x, y, z + Math.random() * 2); scene.add(b);
+    }
+  }
   for (let i = 0; i < Math.round(-LEVEL_END * 0.9); i++) {          // big jungle plants either side of the trail
     const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * span, x = side * (6.5 + Math.random() * 16);
     const h = 5 + Math.random() * 6;
@@ -453,6 +480,8 @@ function breakCrate(c, bounce) {
 }
 
 // ---------- physics ----------
+const STEP_SMALL = 0.35;  // lips this low are stepped over automatically
+const STEP_UP = 0.75;   // how tall a lip you can walk onto without jumping (ramps are walked up smoothly)
 function overlaps(s, p) {
   return p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x &&
          p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z &&
@@ -461,18 +490,39 @@ function overlaps(s, p) {
 function moveAxis(axis, amount) {
   player.pos[axis] += amount;
   for (const s of solids) {
-    if (!overlaps(s, player.pos)) continue;
     const p = player.pos;
+    if (s.ramp) {
+      if (!(p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x && p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z)) continue;
+      const surf = rampY(s, p.z);
+      if (!(p.y < surf - 1e-4)) continue;
+      if (axis === 'y') { if (amount <= 0) { p.y = surf; player.grounded = true; player.ground = s; if (player.vel.y < 0) player.vel.y = 0; } }
+      else if (surf - p.y <= STEP_UP) { p.y = surf; player.grounded = true; player.ground = s; }   // walk up the slope
+      else p[axis] -= amount;                                                                    // too steep: blocked
+      continue;
+    }
+    if (!overlaps(s, p)) continue;
     if (axis === 'y') {
       if (amount <= 0) {
         p.y = s.max.y; player.grounded = true; player.ground = s;
         if (player.vel.y < -1 && s.crate) { breakCrate(s, true); }
         if (player.vel.y < 0) player.vel.y = 0;
       } else { p.y = s.min.y - PLAYER_H; player.vel.y = 0; }
+    } else if (!s.crate && s.max.y - p.y <= STEP_SMALL) {
+      p.y = s.max.y; player.grounded = true; player.ground = s;                         // tiny lips never stop you
     } else {
       p[axis] = amount > 0 ? s.min[axis] - HALF_W : s.max[axis] + HALF_W;
     }
   }
+}
+// stay glued to a slope when walking downhill instead of skipping off it
+function snapToRamp() {
+  const p = player.pos; let best = null, bestY = -Infinity;
+  for (const s of solids) {
+    if (!s.ramp || !(p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x && p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z)) continue;
+    const surf = rampY(s, p.z), gap = p.y - surf;
+    if (gap >= 0 && gap < 0.7 && surf > bestY) { best = s; bestY = surf; }
+  }
+  if (best) { p.y = bestY; player.grounded = true; player.ground = best; if (player.vel.y < 0) player.vel.y = 0; }
 }
 
 const tmp = new THREE.Vector3();
@@ -528,10 +578,12 @@ function update(dt) {
   const ground = player.ground;
   if (player.grounded && ground && ground.delta) player.pos[ground.mover.axis] += ground.delta;
 
+  const wasGrounded = player.grounded;
   player.grounded = false; player.ground = null;
   moveAxis('x', player.vel.x * dt);
   moveAxis('z', player.vel.z * dt);
   moveAxis('y', player.vel.y * dt);
+  if (!player.grounded && wasGrounded && player.vel.y <= 0.01) snapToRamp();
 
   // spin
   if (player.spin > 0) {
@@ -600,7 +652,8 @@ function frame() {
   // blob shadow
   let sy = -Infinity;
   for (const s of solids) {
-    if (player.pos.x + HALF_W > s.min.x && player.pos.x - HALF_W < s.max.x && player.pos.z + HALF_W > s.min.z && player.pos.z - HALF_W < s.max.z && s.max.y <= player.pos.y + 0.2) sy = Math.max(sy, s.max.y);
+    const top = s.ramp ? rampY(s, player.pos.z) : s.max.y;
+    if (player.pos.x + HALF_W > s.min.x && player.pos.x - HALF_W < s.max.x && player.pos.z + HALF_W > s.min.z && player.pos.z - HALF_W < s.max.z && top <= player.pos.y + 0.2) sy = Math.max(sy, top);
   }
   shadow.visible = sy > -Infinity; shadow.position.set(player.pos.x, sy + 0.02, player.pos.z);
   shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
