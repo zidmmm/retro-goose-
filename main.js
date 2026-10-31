@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
+import { makeMaterials, tileUV, WUMPA_URL } from './textures.js';
 
 // ---------- tuning ----------
 const SPEED = 8, GRAVITY = 32, JUMP_V = 12.5, SPIN_TIME = 0.5, SPIN_COOLDOWN = 0.2;
@@ -27,11 +28,8 @@ const sun = new THREE.DirectionalLight(0xfff2cc, 1.6);
 sun.position.set(10, 20, 8); scene.add(sun);
 
 const mat = c => new THREE.MeshLambertMaterial({ color: c });
-const M = { grass: mat(0x4caf50), dirt: mat(0x8d5a2b), crate: mat(0xc98a3c), crateBand: mat(0x6b4210),
-  fruit: new THREE.MeshLambertMaterial({ color: 0xff8a00, emissive: 0x552200 }), spike: mat(0xcfd8dc),
-  enemy: mat(0xb71c1c), checkpoint: mat(0x3949ab), moving: mat(0x26a69a), step: mat(0x7cb342),
-  water: new THREE.MeshLambertMaterial({ color: 0x1e88e5, transparent: true, opacity: 0.8 }),
-  trunk: mat(0x6d4c41), leaf: mat(0x2e7d32), portal: new THREE.MeshBasicMaterial({ color: 0xb388ff, transparent: true, opacity: 0.7 }) };
+const T = makeMaterials();
+const M = { ...T, spike: mat(0xcfd8dc), step: T.grass, portal: new THREE.MeshBasicMaterial({ color: 0xb388ff, transparent: true, opacity: 0.7 }) };
 
 // ---------- world state ----------
 const solids = [];   // { mesh, min:Vector3, max:Vector3, vel?, crate? }
@@ -39,7 +37,9 @@ const crates = [], fruits = [], enemies = [], spikes = [], movers = [];
 let finish;
 
 function addBox(x, y, z, w, h, d, material, extra = {}) {
-  const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), material);
+  const geo = new THREE.BoxGeometry(w, h, d);
+  if (!extra.crate) tileUV(geo, w, h, d);
+  const mesh = new THREE.Mesh(geo, material);
   mesh.position.set(x, y, z); scene.add(mesh);
   const s = { mesh, min: new THREE.Vector3(), max: new THREE.Vector3(), half: new THREE.Vector3(w / 2, h / 2, d / 2), ...extra };
   syncBox(s); solids.push(s); return s;
@@ -54,25 +54,19 @@ function platform(x, z0, z1, w, top = 0, material = M.grass) {
 }
 function crate(x, y, z, kind = 'normal', fruitCount = 0) {
   const s = addBox(x, y + 0.5, z, 1, 1, 1, kind === 'checkpoint' ? M.checkpoint : M.crate, { crate: true });
-  const band = new THREE.Mesh(new THREE.BoxGeometry(1.04, 0.2, 1.04), kind === 'checkpoint' ? mat(0xffeb3b) : M.crateBand);
-  s.mesh.add(band);
   s.kind = kind; s.fruitCount = fruitCount; crates.push(s);
 }
 function fruit(x, y, z) {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(0.28, 12, 10), M.fruit);
+  const m = new THREE.Sprite(M.fruit); m.scale.set(0.95, 0.85, 1);
   m.position.set(x, y, z); scene.add(m); fruits.push({ mesh: m, got: false, baseY: y });
 }
 function fruitLine(x, y, z0, z1, n) {
   for (let i = 0; i < n; i++) fruit(x, y, z0 + (z1 - z0) * i / (n - 1));
 }
 function enemy(x, y, z, axis, range) {
-  const g = new THREE.Group();
-  const body = new THREE.Mesh(new THREE.SphereGeometry(0.5, 14, 10), M.enemy); body.scale.y = 0.8; g.add(body);
-  for (const sx of [-0.18, 0.18]) {
-    const e = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 6), mat(0xffffff)); e.position.set(sx, 0.12, 0.42); g.add(e);
-  }
-  g.position.set(x, y + 0.4, z); scene.add(g);
-  enemies.push({ mesh: g, origin: new THREE.Vector3(x, y + 0.4, z), axis, range, t: Math.random() * 6, alive: true });
+  const g = new THREE.Sprite(M.enemy); g.scale.set(1.5, 1.25, 1);
+  g.position.set(x, y + 0.45, z); scene.add(g);
+  enemies.push({ mesh: g, origin: new THREE.Vector3(x, y + 0.45, z), axis, range, t: Math.random() * 6, alive: true });
 }
 function spike(x, y, z) {
   const g = new THREE.Group();
@@ -123,9 +117,8 @@ function buildLevel() {
   water.rotation.x = -Math.PI / 2; water.position.y = -12; scene.add(water);
   for (let i = 0; i < 90; i++) {
     const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * 150, x = side * (6 + Math.random() * 18);
-    const h = 3 + Math.random() * 5;
-    const t = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.45, h, 6), M.trunk); t.position.set(x, h / 2 - 1.5, z); scene.add(t);
-    const l = new THREE.Mesh(new THREE.ConeGeometry(2 + Math.random() * 1.5, h * 0.9, 7), M.leaf); l.position.set(x, h + 0.5, z); scene.add(l);
+    const h = 5 + Math.random() * 6;
+    const t = new THREE.Sprite(M.tree); t.scale.set(h * 0.7, h, 1); t.position.set(x, h / 2 - 1.5, z); scene.add(t);
   }
 }
 buildLevel();
@@ -204,7 +197,7 @@ let checkpoint = new THREE.Vector3(0, 0, 0), time = 0;
 const hud = { lives: document.getElementById('lives'), fruit: document.getElementById('fruit'), crates: document.getElementById('crates') };
 const msg = document.getElementById('msg'), msgbody = document.getElementById('msgbody');
 function updateHud() {
-  hud.lives.textContent = `♥ x${lives}`; hud.fruit.textContent = `🍊 ${fruitCount}`;
+  hud.lives.textContent = `♥ x${lives}`; hud.fruit.innerHTML = `<img src="${WUMPA_URL}" height="26" style="image-rendering:pixelated;vertical-align:middle"> ${fruitCount}`;
   hud.crates.textContent = `📦 ${cratesBroken}/${totalCrates}`;
 }
 function showMsg(title, body) {
@@ -317,7 +310,7 @@ function update(dt) {
   // fruit
   for (const f of fruits) {
     if (f.got) continue;
-    f.mesh.rotation.y += dt * 3; f.mesh.position.y = f.baseY + Math.sin(time * 3 + f.baseY) * 0.08;
+    f.mesh.position.y = f.baseY + Math.sin(time * 3 + f.baseY) * 0.08;
     if (f.mesh.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 0.9, player.pos.z)) < 0.9) {
       f.got = true; f.mesh.visible = false; addFruit(1); beep(1000, 0.06, 'triangle', 0.04);
     }
@@ -326,7 +319,6 @@ function update(dt) {
   for (const e of enemies) {
     if (!e.alive) continue;
     e.t += dt; e.mesh.position[e.axis] = e.origin[e.axis] + Math.sin(e.t * 1.6) * e.range;
-    e.mesh.rotation.y = Math.cos(e.t * 1.6) > 0 ? Math.PI / 2 : -Math.PI / 2;
     const dx = e.mesh.position.x - player.pos.x, dz = e.mesh.position.z - player.pos.z, dy = e.mesh.position.y - (player.pos.y + 0.5);
     if (dx * dx + dz * dz < 0.8 && Math.abs(dy) < 1.2) {
       const stomp = player.vel.y < 0 && player.pos.y > e.mesh.position.y - 0.1;
