@@ -126,7 +126,7 @@ function buildLevel() {
   platform(0, -149, -178, 2.8, 0, M.dirt);
   crate(0, 0, -150.5, 'checkpoint'); crate(0, 0, -152, 'aku');
   for (const z of [-155, -163, -171]) { spike(0, 0, z); fruit(0, 2.3, z); }
-  enemy(0, 0, -159, 'z', 2.5); enemy(0, 0, -167, 'z', 2.5); enemy(0, 0, -175, 'z', 2.5);
+  enemy(0, 0, -159, 'z', 1.6); enemy(0, 0, -167, 'z', 1.6); enemy(0, 0, -175, 'z', 1.6);
   // 9. climb to a raised plateau
   platform(0, -181, -187, 8);
   addBox(0, 0.6, -185.5, 8, 1.2, 3, M.step);
@@ -157,7 +157,7 @@ function buildLevel() {
       const len = 26; platform(0, z0, z0 - len, 2.8, 0, M.dirt);
       maybeCheckpoint(z0 - 1.5);
       for (const d of [6, 14, 22]) { spike(0, 0, z0 - d); fruit(0, 2.3, z0 - d); }
-      enemy(0, 0, z0 - 10, 'z', 2.5); enemy(0, 0, z0 - 18, 'z', 2.5);
+      enemy(0, 0, z0 - 10, 'z', 1.6); enemy(0, 0, z0 - 18, 'z', 1.6);
       return z0 - len;
     },
     ride(z0) {                                       // z0 is 3 past the previous platform: ride a moving platform across
