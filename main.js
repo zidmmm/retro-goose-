@@ -81,7 +81,7 @@ function spike(x, y, z) {
 function buildLevel() {
   // 1. start area
   platform(0, 4, -22, 7);
-  crate(-1.5, 0, -8, 'normal', 3); crate(1.5, 0, -8, 'normal', 3); crate(0, 0, -14, 'normal', 5); crate(-2, 0, -18, 'aku');
+  crate(-1.5, 0, -8, 'normal', 3); crate(1.5, 0, -8, 'normal', 3); crate(0, 0, -14, 'normal', 5); crate(0, 0, -11, 'aku');
   fruitLine(0, 0.9, -3, -6, 3); fruitLine(0, 0.9, -16, -20, 4);
   // 2. first gap + patrol platform
   platform(0, -25, -42, 7);
@@ -353,7 +353,7 @@ function update(dt) {
     player.spin -= dt; if (player.spin <= 0) player.spinCd = SPIN_COOLDOWN;
     for (const c of crates.slice()) {
       if (c.broken) continue;
-      if (Math.abs(c.mesh.position.x - player.pos.x) < 1.5 && Math.abs(c.mesh.position.z - player.pos.z) < 1.5 &&
+      if (Math.abs(c.mesh.position.x - player.pos.x) < 2.3 && Math.abs(c.mesh.position.z - player.pos.z) < 2.3 &&
           c.mesh.position.y > player.pos.y - 0.6 && c.mesh.position.y < player.pos.y + PLAYER_H + 0.5) breakCrate(c, false);
     }
   }
