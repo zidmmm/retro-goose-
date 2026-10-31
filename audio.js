@@ -98,6 +98,8 @@ const SFX = {
   portal: () => { tone({ f: 200, f2: 1400, dur: 0.9, type: 'sine', vol: 0.22 }); arp([72, 76, 79, 84, 88, 91], 0.08, { dur: 0.35, type: 'triangle', vol: 0.15, delay: 0.3 }); },
   victory: () => { arp([72, 72, 72, 76, 79, 84], 0.13, { dur: 0.2, type: 'square', vol: 0.2 }); [72, 76, 79, 84].forEach(n => tone({ f: midi(n), dur: 1.2, type: 'triangle', vol: 0.16, delay: 0.85 })); },
   gameover: () => arp([69, 65, 62, 57], 0.28, { dur: 0.5, type: 'sawtooth', vol: 0.17 }),
+  fireball: () => { noise({ dur: 0.45, vol: 0.4, f0: 600, f1: 2600, q: 1.5, type: 'bandpass' }); tone({ f: 180, f2: 90, dur: 0.4, type: 'sawtooth', vol: 0.18, vibrato: 20 }); },
+  flame: () => { noise({ dur: 0.7, vol: 0.35, f0: 1800, f1: 500, q: 0.8, type: 'bandpass' }); tone({ f: 90, f2: 60, dur: 0.6, type: 'sawtooth', vol: 0.12 }); },
   zap: () => { tone({ f: 1100, f2: 220, dur: 0.22, type: 'sawtooth', vol: 0.18 }); noise({ dur: 0.18, vol: 0.14, f0: 5000, f1: 1500, type: 'highpass' }); },
   lever: () => { tone({ f: 160, f2: 90, dur: 0.14, type: 'square', vol: 0.22 }); noise({ dur: 0.12, vol: 0.3, f0: 2500, f1: 600, q: 4, type: 'bandpass' }); tone({ f: 70, dur: 0.2, type: 'sine', vol: 0.3, delay: 0.1 }); },
   alarm: () => { for (let i = 0; i < 6; i++) tone({ f: i % 2 ? 640 : 900, dur: 0.17, type: 'square', vol: 0.15, delay: i * 0.2 }); },
@@ -153,6 +155,30 @@ THEMES.map = {                   // world map: light, travelling theme (C major)
   ],
   kick: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], hat: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
   leadType: 'triangle', leadVol: 0.09,
+};
+THEMES.temple = {                // World 2 temples: tribal and tense, D phrygian
+  bpm: 126,
+  bass: [38, 38, 39, 38].map(r => bassBar(r, true)),
+  lead: [
+    [74, R, R, 75, 74, R, 70, R, 74, R, R, 75, 77, R, 75, R],
+    [74, R, 77, R, 75, R, 74, R, 70, R, R, 70, 72, R, 70, R],
+    [77, R, R, 79, 77, R, 75, R, 77, R, R, 79, 81, R, 79, R],
+    [79, R, 77, R, 75, R, 74, R, 75, R, 74, R, 70, R, R, R],
+  ],
+  kick: [1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 1], hat: [1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 1],
+  leadType: 'square', leadVol: 0.06,
+};
+THEMES.uka = {                   // Uka Uka: slow, heavy, ominous
+  bpm: 132,
+  bass: [38, 37, 38, 41].map(r => bassBar(r, true)),
+  lead: [
+    [62, R, R, R, 63, R, R, R, 62, R, R, R, 65, R, 63, R],
+    [62, R, 65, R, 68, R, 65, R, 62, R, 65, R, 70, R, 68, R],
+    [61, R, R, R, 62, R, R, R, 61, R, R, R, 64, R, 62, R],
+    [65, R, 68, R, 71, R, 68, R, 65, R, 68, R, 73, R, 71, R],
+  ],
+  kick: [1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], hat: [1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1],
+  leadType: 'sawtooth', leadVol: 0.06,
 };
 THEMES.chase = {                 // boulder chase: fast, relentless A minor
   bpm: 168,

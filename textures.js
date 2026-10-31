@@ -76,6 +76,42 @@ const flowerTex = (petal, centre) => canvasTex(16, 16, (g) => {
   for (const [x, y] of [[5, 4], [9, 4], [4, 7], [10, 7], [7, 2]]) dot(g, x, y, petal, 3, 3);
   dot(g, 7, 5, centre, 3, 3);
 }, { repeat: false });
+// ---- World 2: temple ruins ----
+const templeTopTex = () => canvasTex(32, 32, (g, w, h) => {          // sandstone floor tiles with dark seams and a worn carving
+  speckle(g, w, h, '#b8905a', ['#a67f4c', '#c9a068', '#94703f', '#d8b178'], 0.5);
+  dot(g, 0, 0, '#5a3a1c', w, 1); dot(g, 0, 16, '#5a3a1c', w, 1); dot(g, 0, 0, '#5a3a1c', 1, h); dot(g, 16, 0, '#5a3a1c', 1, h);
+  for (const [x, y] of [[5, 5], [21, 21]]) { dot(g, x, y, '#7a4a22', 6, 1); dot(g, x, y + 4, '#7a4a22', 6, 1); dot(g, x + 2, y, '#7a4a22', 1, 5); }
+});
+const templeSideTex = () => canvasTex(16, 16, (g, w, h) => {         // carved red stone, with a gold band along the top edge
+  speckle(g, w, h, '#7a3b2a', ['#6a3022', '#8c4630', '#5a281c'], 0.5);
+  dot(g, 0, 0, '#d9a441', w, 2); dot(g, 0, 2, '#a2701e', w, 1);
+  for (let x = 1; x < w; x += 4) dot(g, x, 6, '#c98a32', 2, 1);
+}, { clampT: true });
+const templeWallTex = () => canvasTex(32, 32, (g, w, h) => {         // dark temple wall: blocks, a gold glyph band, glowing red eyes
+  speckle(g, w, h, '#4a2a2a', ['#3e2222', '#583232', '#321a1a'], 0.4);
+  for (const y of [0, 16]) dot(g, 0, y, '#1c0e0e', w, 1);
+  dot(g, 0, 0, '#1c0e0e', 1, 16); dot(g, 16, 16, '#1c0e0e', 1, 16);
+  for (let x = 2; x < 30; x += 4) { dot(g, x, 6, '#e0a838', 2, 2); dot(g, x + 1, 9, '#e0a838', 1, 2); }
+  dot(g, 5, 21, '#ff4a2a', 4, 3); dot(g, 22, 21, '#ff4a2a', 4, 3); dot(g, 12, 26, '#c98a32', 8, 2);
+});
+const lavaTex = () => canvasTex(32, 32, (g, w, h) => {              // molten rock far below
+  speckle(g, w, h, '#a8220c', ['#c2340f', '#8a1a08', '#e0521a'], 0.5);
+  for (let i = 0; i < 34; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#ffb02e' : '#3a0a04', 2 + ((rnd() * 4) | 0), 1);
+});
+const flameTex = () => canvasTex(32, 48, (g) => {                   // a pixel-art flame (transparent background)
+  for (let y = 0; y < 48; y++) {
+    const k = y / 47, half = Math.max(0, Math.round(13 * Math.sin(Math.min(1, k * 1.15) * Math.PI) * (0.55 + 0.45 * k)));
+    for (let x = 16 - half; x < 16 + half; x++) {
+      const d = Math.abs(x - 16) / Math.max(1, half), jitter = rnd() < 0.12;
+      dot(g, x, 47 - y, d < 0.35 - k * 0.2 ? (jitter ? '#ffffff' : '#fff2a8') : d < 0.7 ? (jitter ? '#ffd24a' : '#ffa21c') : (jitter ? '#ff5a1a' : '#e0360e'));
+    }
+  }
+}, { repeat: false });
+const fireWallTex = () => canvasTex(32, 32, (g, w, h) => {         // tileable wall of fire (the level 4 chaser)
+  dot(g, 0, 0, '#d8340c', w, h);
+  for (let x = 0; x < w; x++) { const top = 8 + ((Math.sin(x * 0.7) * 5 + rnd() * 6) | 0); dot(g, x, top, '#ffa21c', 1, h - top); dot(g, x, top + 5, '#ffd84a', 1, h - top - 5); }
+  for (let i = 0; i < 30; i++) dot(g, (rnd() * 30) | 0, (rnd() * 30) | 0, '#fff2a8', 1, 2);
+});
 const enemyTex = () => canvasTex(24, 20, (g) => {
   for (let y = 0; y < 20; y++) for (let x = 0; x < 24; x++) {
     const dx = (x - 12) / 8.5, dy = (y - 12) / 5.5;
@@ -104,6 +140,16 @@ function wumpaTex() {
 const lambert = map => new THREE.MeshLambertMaterial({ map });
 const sprite = (map, extra = {}) => new THREE.SpriteMaterial({ map, transparent: true, alphaTest: 0.4, ...extra });
 
+export function makeTempleMaterials() {
+  const top = lambert(templeTopTex()), side = lambert(templeSideTex()), dirt = lambert(templeSideTex()), wall = lambert(templeWallTex()), moss = lambert(templeSideTex());
+  const lava = lambert(lavaTex()); lava.map.repeat.set(120, 120); lava.emissive = new THREE.Color(0x551100);
+  const wallTex = templeWallTex(); wallTex.repeat.set(1, 1);
+  return {
+    floor: [side, side, top, dirt, side, side],
+    wall: [wall, wall, moss, wall, wall, wall],
+    lava, flame: sprite(flameTex(), { alphaTest: 0.3 }), flameWall: new THREE.MeshBasicMaterial({ map: fireWallTex(), transparent: true, opacity: 0.92, side: THREE.DoubleSide }),
+  };
+}
 export function makeMaterials() {
   const top = lambert(pathTex()), side = lambert(dirtSideTex()), dirt = lambert(dirtTex()), metal = lambert(metalTex());
   const stone = lambert(stoneTex()), moss = lambert(mossTex());
