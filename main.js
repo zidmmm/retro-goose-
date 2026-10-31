@@ -529,10 +529,14 @@ function startOrRestart() {
   unlockAudio();
   if (performance.now() < uiLockUntil) return;
   if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); setTimeout(checkSound, 900); }
-  else if (state === 'over' || state === 'won') resetGame();
+  else if (state === 'over') resetGame(retryStage);
+  else if (state === 'won') resetGame('level1');
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
-function resetGame() {
+function stageKey() { return cortex.active ? 'cortex' : chase.active ? 'chase' : boss.active ? 'boss1' : 'level1'; }
+const STAGE_NAMES = { level1: 'level 1', boss1: 'the Ripper Roo fight', chase: 'level 2 (the boulder chase)', cortex: 'the Dr. Neo Cortex fight' };
+let retryStage = 'level1';                   // the stage you got Game Over in: that is where you start again
+function resetGame(stage = 'level1') {
   removeQueue.length = 0; bossReset(); stagesReset();
   lives = START_LIVES; fruitCount = 0; cratesBroken = 0; masks = 0; invincible = 0; checkpoint.set(0, 0, 0);
   for (const c of crates) {
@@ -545,7 +549,8 @@ function resetGame() {
   for (const e of enemies) { e.alive = true; e.mesh.visible = true; e.t = Math.random() * 6; }
   for (const list of [debris, pops, booms]) { for (const o of list) scene.remove(o); list.length = 0; }
   player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
-  state = 'play'; msg.classList.add('hidden'); updateHud(); music('level');
+  state = 'play'; msg.classList.add('hidden'); updateHud();
+  if (stage === 'boss1') enterBoss(); else if (stage === 'chase') enterChase(); else if (stage === 'cortex') enterCortex(); else music('level');   // start the stage you were on again (not level 1)
 }
 let camSnap = true;   // jump the camera straight to the player (respawn / restart) instead of gliding across the level
 function respawn() {
@@ -576,7 +581,7 @@ function die() {
   if (player.hurt > 0.5) return;
   masks = 0; invincible = 0;
   lives--; sfx('die'); updateHud();
-  if (lives <= 0) { state = 'over'; uiLockUntil = performance.now() + 900; music(null); sfx('gameover'); showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> or tap the button to retry`, 'TRY AGAIN'); return; }
+  if (lives <= 0) { retryStage = stageKey(); state = 'over'; uiLockUntil = performance.now() + 900; music(null); setRumble(0); sfx('gameover'); showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> or tap the button to try ${STAGE_NAMES[retryStage]} again`, 'TRY AGAIN'); return; }
   respawn();
 }
 function addFruit(n) { fruitCount += n; while (fruitCount >= 100) { fruitCount -= 100; lives++; sfx('oneup'); } updateHud(); }
@@ -752,13 +757,14 @@ function startBoss() {                       // reached the portal: fade out, dr
   state = 'transition'; uiLockUntil = performance.now() + 900;
   toast('LEVEL COMPLETE!'); sfx('portal'); music(null);
   bossUI.fade.classList.add('on');
-  setTimeout(() => {
-    clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1.5, bigT: 8 });
-    boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); boss.root.visible = true; boss.root.scale.setScalar(1);
-    checkpoint.set(0, 0, ARENA.z - 3); player.pos.set(0, 0, ARENA.z - 3); respawn(); player.hurt = 0;
-    bossUI.bar.hidden = false; updateBossBar();
-    state = 'play'; bossUI.fade.classList.remove('on'); toast('RIPPER ROO!'); sfx('intro'); music('boss');
-  }, 1300);
+  setTimeout(() => { enterBoss(); state = 'play'; bossUI.fade.classList.remove('on'); }, 1300);
+}
+function enterBoss() {                       // put Crash in Ripper Roo's arena with a fresh fight
+  clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1.5, bigT: 8 });
+  boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); boss.root.visible = true; boss.root.scale.setScalar(1);
+  checkpoint.set(0, 0, ARENA.z - 3); player.pos.set(0, 0, ARENA.z - 3); respawn(); player.hurt = 0;
+  bossUI.bar.hidden = false; updateBossBar();
+  toast('RIPPER ROO!'); sfx('intro'); music('boss');
 }
 function bossReset() {                       // back to the very start of the game
   clearRocks(); boss.active = false; boss.root.visible = false; bossShadow.visible = false; boss.hp = BOSS_HP; boss.dead = 0; boss.act = null; boss.want = null;
@@ -897,12 +903,13 @@ function fadeThen(cb, ms = 1300) {          // fade to black, run cb (teleport e
 }
 function startChase() {
   toast('RIPPER ROO DEFEATED!'); sfx('victory'); music(null);
-  fadeThen(() => {
-    boss.active = false; boss.root.visible = false; bossShadow.visible = false; clearRocks(); bossUI.bar.hidden = true;
-    chase.active = true; chase.stun = 0; chase.t = 0; chase.boulder.visible = true;
-    checkpoint.set(0, 0, CHASE.z0 + 6); player.pos.set(0, 0, CHASE.z0 + 6); respawn(); player.hurt = 0;
-    music('chase'); sfx('intro'); toast('LEVEL 2: RUN!');
-  }, 2200);
+  fadeThen(enterChase, 2200);
+}
+function enterChase() {                      // put Crash at the start of the boulder chase
+  boss.active = false; boss.root.visible = false; bossShadow.visible = false; clearRocks(); bossUI.bar.hidden = true;
+  chase.active = true; chase.stun = 0; chase.t = 0; chase.boulder.visible = true;
+  checkpoint.set(0, 0, CHASE.z0 + 6); player.pos.set(0, 0, CHASE.z0 + 6); respawn(); player.hurt = 0;
+  music('chase'); sfx('intro'); toast('LEVEL 2: RUN!');
 }
 function updateChase(dt) {
   const b = chase.boulder, R = CHASE.R, bp = b.position;
@@ -932,15 +939,18 @@ function resetPads() {
 }
 function startCortex() {
   toast('LEVEL COMPLETE!'); sfx('portal'); music(null); setRumble(0);
-  fadeThen(() => {
-    chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0;
+  fadeThen(enterCortex);
+}
+function enterCortex() {                     // put Crash in Dr. Neo Cortex's lab with a fresh fight
+  {
+    chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0; setRumble(0);
     Object.assign(cortex, { active: true, hp: CORTEX_HP, stage: 1, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 1, flash: 0, laugh: 0, recoil: 0, seq: null, seqPending: false, padTimer: 7, shootT: 1.5, rootX: 0, sweep: 0 });
     resetPads(); clearBlasts();
     cortex.platform.visible = true; cortex.platform.rotation.set(0, 0, 0); cortex.platform.position.set(0, 5.6, cortex.zp); cortex.root.visible = true; cortex.root.rotation.set(0, 0, 0);
     checkpoint.set(0, 0, ARENA2.z - 3); player.pos.set(0, 0, ARENA2.z - 3); respawn(); player.hurt = 0;
     setBossBar('DR. NEO CORTEX', CORTEX_HP, CORTEX_HP); bossUI.bar.hidden = false;
     music('cortex'); sfx('intro'); toast('DR. NEO CORTEX!'); cortexLaugh();
-  });
+  }
 }
 function stagesReset() {                      // back to the very start of the game
   chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0; setRumble(0);
@@ -1396,5 +1406,5 @@ function frame() {
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { retry: () => retryStage, cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();

@@ -44,3 +44,6 @@ He hovers on a platform and fires ray-gun zaps at you (6 lives on the health bar
 
 ## Collision
 Crash's collision is a flat disc at his feet (like the original trilogy), not a box. Corners are round, so he slides around crates, walls and ledge corners instead of catching on them. He can still stand with his centre slightly past a platform edge.
+
+## Game Over
+If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, or the Dr. Neo Cortex fight) with 3 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
