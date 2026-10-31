@@ -84,7 +84,7 @@ const sprite = (map, extra = {}) => new THREE.SpriteMaterial({ map, transparent:
 
 export function makeMaterials() {
   const top = lambert(grassTopTex()), side = lambert(dirtSideTex()), dirt = lambert(dirtTex()), metal = lambert(metalTex());
-  const water = lambert(waterTex()); water.map.repeat.set(110, 110); water.transparent = true; water.opacity = 0.85;
+  const water = lambert(waterTex()); water.map.repeat.set(120, 600); water.transparent = true; water.opacity = 0.85;
   return {
     grass: [side, side, top, dirt, side, side],       // box face order: +x -x +y -y +z -z
     dirt: [dirt, dirt, dirt, dirt, dirt, dirt],

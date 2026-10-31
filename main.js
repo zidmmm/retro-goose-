@@ -11,6 +11,7 @@ const MODEL_YAW = 0; // rotate model so its face points along -Z; adjust if it f
 const MODEL_SCALE = 1.5; // visual size multiplier; collision box stays PLAYER_H tall
 const START_LIVES = 3;
 const INVINCIBLE_TIME = 15;
+const LEVEL_END = -1150;   // z of the far end of the level; longer = more play time
 
 // ---------- renderer ----------
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -20,7 +21,7 @@ document.body.appendChild(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x8fd3ff);
 scene.fog = new THREE.Fog(0x8fd3ff, 25, 90);
-const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 110);
 addEventListener('resize', () => {
   renderer.setSize(innerWidth, innerHeight);
   camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
@@ -133,20 +134,93 @@ function buildLevel() {
   enemy(0, 2.4, -190, 'x', 3); enemy(0, 2.4, -194, 'x', 3); enemy(0, 2.4, -199, 'x', 3);
   spike(-2, 2.4, -200); spike(2, 2.4, -200);
   fruitLine(0, 3.4, -188, -202, 7);
-  // 10. finale
-  platform(0, -206, -233, 8);
-  crate(0, 0, -207.5, 'checkpoint'); crate(-2.5, 0, -212, 'normal', 8); crate(2.5, 0, -212, 'normal', 8); crate(0, 0, -215, 'aku');
-  enemy(0, 0, -218, 'x', 3); enemy(0, 0, -222, 'x', 3); enemy(0, 0, -226, 'x', 3);
-  fruitLine(0, 0.9, -208, -230, 10);
+  // 10+. generated sections: the rest of the level is assembled from templates (seeded, so it is the same every run)
+  let seed = 20241031;
+  const rng = () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  const rr = (a, b) => a + rng() * (b - a);
+  let sectionNo = 0;
+  const maybeCheckpoint = z => { if (sectionNo % 4 === 0) crate(0, 0, z, 'checkpoint'); };
+  const maybeAku = (y, z, p = 0.55) => { if (rng() < p) crate(0, y, z, 'aku'); };
+  const T = {
+    arena(z0) {                                      // wide platform, wave of patrolling enemies, crates
+      const len = rr(24, 30); platform(0, z0, z0 - len, 9);
+      maybeCheckpoint(z0 - 1.5);
+      crate(-3, 0, z0 - 5, 'normal', 4); crate(3, 0, z0 - 5, 'normal', 4); maybeAku(0, z0 - 8);
+      const n = 3 + (sectionNo > 8 ? 1 : 0);
+      for (let i = 0; i < n; i++) enemy(0, 0, z0 - 8 - i * ((len - 12) / n), 'x', 3.5);
+      crate(-3, 0, z0 - len + 4, 'normal', 5); crate(3, 0, z0 - len + 4, 'normal', 5);
+      fruitLine(0, 0.9, z0 - 3, z0 - len + 2, 7);
+      return z0 - len;
+    },
+    bridge(z0) {                                     // narrow bridge: spikes plus enemies patrolling along it
+      const len = 26; platform(0, z0, z0 - len, 2.8, 0, M.dirt);
+      maybeCheckpoint(z0 - 1.5);
+      for (const d of [6, 14, 22]) { spike(0, 0, z0 - d); fruit(0, 2.3, z0 - d); }
+      enemy(0, 0, z0 - 10, 'z', 2.5); enemy(0, 0, z0 - 18, 'z', 2.5);
+      return z0 - len;
+    },
+    ride(z0) {                                       // z0 is 3 past the previous platform: ride a moving platform across
+      const mv = addBox(0, -1, z0, 3.4, 2, 3.4, M.moving);
+      mv.mover = { axis: 'z', origin: z0, range: 2.2, speed: rr(0.9, 1.3) }; movers.push(mv);
+      fruitLine(0, 1.2, z0 + 2, z0 - 2, 3);
+      platform(0, z0 - 5, z0 - 19, 6);
+      crate(-1.5, 0, z0 - 8, 'normal', 4); crate(1.5, 0, z0 - 8, 'normal', 4);
+      enemy(0, 0, z0 - 14, 'x', 2.2);
+      return z0 - 19;
+    },
+    plateau(z0) {                                    // step up onto a raised block full of enemies, drop off the far end
+      platform(0, z0, z0 - 6, 8);
+      addBox(0, 0.6, z0 - 4.5, 8, 1.2, 3, M.step);
+      addBox(0, 1.2, z0 - 13, 8, 2.4, 14, M.step);
+      maybeCheckpoint(z0 - 1.5); maybeAku(2.4, z0 - 9);
+      crate(-2.5, 2.4, z0 - 11, 'normal', 6); crate(2.5, 2.4, z0 - 11, 'normal', 6);
+      enemy(0, 2.4, z0 - 10, 'x', 3); enemy(0, 2.4, z0 - 14, 'x', 3);
+      spike(-2.2, 2.4, z0 - 17); spike(2.2, 2.4, z0 - 17);
+      fruitLine(0, 3.4, z0 - 8, z0 - 18, 5);
+      return z0 - 20;
+    },
+    stones(z0) {                                     // hop across a line of small islands
+      let z = z0; const xs = [0, 1.3, -1.3, 1.0, -1.0, 0];
+      xs.forEach((x, i) => {
+        platform(x, z, z - 3, 3.4); if (i === 2) crate(x, 0, z - 1.5, 'normal', 5);
+        if (i < xs.length - 1) fruit((x + xs[i + 1]) / 2, 2.3, z - 3 - 1.3);
+        z -= i < xs.length - 1 ? 5.6 : 3;
+      });
+      return z;
+    },
+    spikes(z0) {                                     // spike rows you have to weave through
+      const len = 26; platform(0, z0, z0 - len, 9);
+      maybeCheckpoint(z0 - 1.5);
+      for (const [d, xs] of [[7, [-3, -1]], [13, [1, 3]], [19, [-3, -1]]]) for (const x of xs) spike(x, 0, z0 - d);
+      enemy(0, 0, z0 - 10, 'x', 3); enemy(0, 0, z0 - 16, 'x', 3);
+      crate(-3.2, 0, z0 - 4, 'normal', 4); crate(3.2, 0, z0 - 4, 'normal', 4); maybeAku(0, z0 - 22, 0.4);
+      fruitLine(0, 0.9, z0 - 3, z0 - 24, 8);
+      return z0 - len;
+    },
+  };
+  const order = ['arena', 'bridge', 'plateau', 'ride', 'spikes', 'stones'];
+  let z = -206, prev = '';
+  while (z > LEVEL_END + 40) {
+    sectionNo++;
+    let kind; do { kind = order[(rng() * order.length) | 0]; } while (kind === prev);
+    prev = kind;
+    // every section starts 3 past the previous platform's end; 'ride' uses that gap for its moving platform
+    z = T[kind](z) - 3;
+  }
+  // finale
+  platform(0, z, LEVEL_END, 8);
+  crate(0, 0, z - 1.5, 'checkpoint'); crate(-2.5, 0, z - 6, 'normal', 8); crate(2.5, 0, z - 6, 'normal', 8); crate(0, 0, z - 9, 'aku');
+  enemy(0, 0, z - 12, 'x', 3); enemy(0, 0, z - 16, 'x', 3); enemy(0, 0, z - 20, 'x', 3);
+  fruitLine(0, 0.9, z - 3, LEVEL_END + 5, 10);
   finish = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.25, 12, 32), M.portal);
-  finish.position.set(0, 2, -230); scene.add(finish);
+  finish.position.set(0, 2, LEVEL_END + 6); scene.add(finish);
   const disc = new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), M.portal); finish.add(disc);
 
   // scenery
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), M.water);
-  water.rotation.x = -Math.PI / 2; water.position.set(0, -12, -120); scene.add(water);
-  for (let i = 0; i < 170; i++) {
-    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * 260, x = side * (6 + Math.random() * 18);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(500, -LEVEL_END + 300), M.water);
+  water.rotation.x = -Math.PI / 2; water.position.set(0, -12, LEVEL_END / 2); scene.add(water);
+  for (let i = 0; i < Math.round(-LEVEL_END * 0.9); i++) {
+    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * (-LEVEL_END + 20), x = side * (6 + Math.random() * 18);
     const h = 5 + Math.random() * 6;
     const t = new THREE.Sprite(M.tree); t.scale.set(h * 0.7, h, 1); t.position.set(x, h / 2 - 1.5, z); scene.add(t);
   }
