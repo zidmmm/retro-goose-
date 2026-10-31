@@ -514,7 +514,7 @@ function showMsg(title, body, label = 'PLAY') {
   const h1 = msg.querySelector('h1'); h1.textContent = title; h1.hidden = title === GAME_TITLE;   // the logo stands in for the title text
   msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>. Beat him, outrun the boulder in level 2, then take on Dr. Neo Cortex: spin into his ray blasts to knock them back!<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs, Dr. Neo Cortex model by SG_Gaming786 (CC BY 4.0)</small>`);
+showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>. Beat him, outrun the boulder in level 2, then take on Dr. Neo Cortex: dodge his green zaps and spin his golden ones back at him!<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs, Dr. Neo Cortex model by SG_Gaming786 (CC BY 4.0)</small>`);
 let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
 // if the browser still has audio blocked a moment after the first tap, tell the player how to turn it on
 function checkSound() { const s = audioStatus(); if (!s.muted && s.state !== 'running') toast('TAP THE SPEAKER BUTTON FOR SOUND'); }
@@ -1026,16 +1026,20 @@ function makeCortexAnimator(parts) {
 loadGlb(window.__CORTEX_B64, './assets/dr_neo_cortex.glb', onCortexModel, () => {});
 
 const blastGeo = new THREE.SphereGeometry(0.45, 12, 8);
-const blastMat = new THREE.MeshBasicMaterial({ color: 0x77ff66 }), blastGlow = new THREE.MeshBasicMaterial({ color: 0x33ff33, transparent: true, opacity: 0.35 }), blastBack = new THREE.MeshBasicMaterial({ color: 0xffe066 });
+// green zaps just hurt (dodge them); golden zaps are the ones you can spin back at him
+const blastMat = new THREE.MeshBasicMaterial({ color: 0x77ff66 }), blastGlow = new THREE.MeshBasicMaterial({ color: 0x33ff33, transparent: true, opacity: 0.35 });
+const goldMat = new THREE.MeshBasicMaterial({ color: 0xffd84a }), goldGlow = new THREE.MeshBasicMaterial({ color: 0xffb300, transparent: true, opacity: 0.4 }), blastBack = new THREE.MeshBasicMaterial({ color: 0xffe066 });
 const gunPt = new THREE.Vector3(), hitPt = new THREE.Vector3();
-function fireBlast() {
+function fireBlast(gold = false) {
   const c = cortex; if (!c.gun) return;
   c.gun.userData.muzzle.getWorldPosition(gunPt);
   const dir = new THREE.Vector3(player.pos.x - gunPt.x, player.pos.y + 0.9 - gunPt.y, player.pos.z - gunPt.z).normalize();
-  const mesh = new THREE.Mesh(blastGeo, blastMat), glow = new THREE.Mesh(blastGeo, blastGlow); glow.scale.setScalar(1.9); mesh.add(glow);
+  const mesh = new THREE.Mesh(blastGeo, gold ? goldMat : blastMat), glow = new THREE.Mesh(blastGeo, gold ? goldGlow : blastGlow); glow.scale.setScalar(gold ? 2.3 : 1.9); mesh.add(glow);
+  mesh.scale.setScalar(gold ? 1.3 : 1);
   mesh.position.copy(gunPt); scene.add(mesh);
-  c.blasts.push({ mesh, vel: dir.multiplyScalar(c.stage === 2 ? 14 : 11), kind: 'shot', life: 4 });
+  c.blasts.push({ mesh, vel: dir.multiplyScalar(c.stage === 2 ? 14 : 11), kind: 'shot', gold, life: 4 });
   sfx('zap'); c.recoil = 0.3;
+  if (gold && !c.goldTold) { c.goldTold = true; toast('SPIN THE GOLD ZAPS BACK AT HIM!'); }
 }
 function cortexHit() {
   const c = cortex;
@@ -1101,7 +1105,7 @@ function updateCortex(dt) {
   }
   c.lever.rotation.z = -0.6 + 1.2 * leverK;
   // ---- ray gun: charge, fire, recoil ----
-  if (fighting && c.stun <= 0 && !c.act) { c.shootT -= dt; if (c.shootT <= 0) c.act = { kind: 'shoot', t: 0, dur: c.stage === 2 ? 1.0 : 1.3, fired: 0, shots: c.stage === 2 && Math.random() < 0.45 ? 2 : 1 }; }
+  if (fighting && c.stun <= 0 && !c.act) { c.shootT -= dt; if (c.shootT <= 0) { c.shotN = (c.shotN || 0) + 1; const gold = c.shotN % 3 === 0; c.act = { kind: 'shoot', t: 0, dur: c.stage === 2 ? 1.0 : 1.3, fired: 0, gold, shots: !gold && c.stage === 2 && Math.random() < 0.45 ? 2 : 1 }; } }
   P.aim = 0.45; P.aimDir.copy(idleAim); P.lever = leverK > 0 ? 1 : 0; let charge = 0, squash = 1, lean = 0;
   const a = c.act;
   if (a && a.kind === 'shoot' && c.stun <= 0) {
@@ -1109,7 +1113,7 @@ function updateCortex(dt) {
     if (c.gun) { c.gun.userData.muzzle.getWorldPosition(gunPt); toPlayer.set(player.pos.x - gunPt.x, player.pos.y + 0.9 - gunPt.y, player.pos.z - gunPt.z).normalize(); }
     const k = Math.min(1, p / 0.35); P.aim = 0.45 + 0.55 * k * k * (3 - 2 * k); P.aimDir.copy(idleAim).lerp(toPlayer, k).normalize();   // he lifts the gun and tracks you
     charge = Math.min(1, p / 0.5);
-    if (a.fired === 0 && p >= 0.5) { fireBlast(); a.fired = 1; }
+    if (a.fired === 0 && p >= 0.5) { fireBlast(a.gold); a.fired = 1; }
     if (a.shots === 2 && a.fired === 1 && p >= 0.72) { fireBlast(); a.fired = 2; }
     if (p >= 1) { c.act = null; c.shootT = (c.stage === 2 ? 0.8 : 1.4) * (0.8 + Math.random() * 0.5); }
   } else if (c.stun > 0) c.act = null;
@@ -1128,7 +1132,7 @@ function updateCortex(dt) {
   if (c.anim) {
     c.anim.update(P, c.t);
     c.gun.position.copy(c.anim.out.tip); c.gun.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), c.anim.out.dir);
-    const tip = c.gun.userData.tip; tip.scale.setScalar(1 + charge * 1.6 + c.recoil * 2); tip.material.color.setHex(Math.floor(c.t * 14) % 2 && charge > 0 ? 0xeaffea : 0x66ff66);
+    const tip = c.gun.userData.tip; tip.scale.setScalar(1 + charge * 1.6 + c.recoil * 2); const goldShot = c.act && c.act.gold; tip.material.color.setHex(goldShot && charge > 0 ? (Math.floor(c.t * 14) % 2 ? 0xfff3b0 : 0xffc400) : Math.floor(c.t * 14) % 2 && charge > 0 ? 0xeaffea : 0x66ff66);   // the gun glows gold when a returnable zap is coming
   }
   c.root.visible = c.flash > 0 ? Math.floor(c.t * 20) % 2 === 0 : true;
   // ---- ray blasts ----
@@ -1142,9 +1146,10 @@ function updateCortex(dt) {
     } else {
       bp.addScaledVector(b.vel, dt); b.life -= dt;
       const dist = Math.hypot(bp.x - player.pos.x, bp.y - (player.pos.y + 0.9), bp.z - player.pos.z), powered = player.spin > 0 || invincible > 0;
-      if (dist < (powered ? 2.2 : 0.95)) {
-        if (powered) { b.kind = 'returning'; b.mesh.material = blastBack; sfx('deflect'); toast('NICE HIT!'); }
-        else { hit(); spawnBoom(bp, 0.8); cortexLaugh(); gone = true; }
+      if (b.gold && (player.spin > 0 || invincible > 0) && dist < 2.2) { b.kind = 'returning'; b.mesh.material = blastBack; sfx('deflect'); toast('NICE HIT!'); }   // golden zaps can be knocked back
+      else if (dist < 0.95) {
+        if (invincible > 0) { spawnBoom(bp, 0.6); sfx('rockSmash'); gone = true; }                                  // golden Aku Aku: green zaps just fizzle
+        else { hit(); spawnBoom(bp, 0.8); cortexLaugh(); gone = true; }                                              // green zaps always hurt, even if you spin
       } else if (b.life <= 0 || bp.y < -12 || bp.z > ARENA2.z + 12 || (bp.y < 0.15 && c.floorOpen < 0.4 && c.pads.every(s => s.broken || s.pad.top < 0.2))) gone = true;
     }
     if (gone) { scene.remove(b.mesh); const at = c.blasts.indexOf(b); if (at >= 0) c.blasts.splice(at, 1); }
@@ -1385,5 +1390,5 @@ function frame() {
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { cortexHit, fireBlast, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
