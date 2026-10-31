@@ -142,6 +142,18 @@ const THEMES = {
     leadType: 'sawtooth', leadVol: 0.05,
   },
 };
+THEMES.map = {                   // world map: light, travelling theme (C major)
+  bpm: 116,
+  bass: [48, 43, 45, 41].map(r => bassBar(r, false)),
+  lead: [
+    [72, R, 76, R, 79, R, 76, R, 72, R, 76, R, 79, R, 81, R],
+    [79, R, 77, R, 76, R, 74, R, 72, R, R, R, 67, R, R, R],
+    [69, R, 72, R, 76, R, 72, R, 69, R, 72, R, 76, R, 79, R],
+    [77, R, 76, R, 74, R, 76, R, 72, R, R, R, R, R, R, R],
+  ],
+  kick: [1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0], snare: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], hat: [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0],
+  leadType: 'triangle', leadVol: 0.09,
+};
 THEMES.chase = {                 // boulder chase: fast, relentless A minor
   bpm: 168,
   bass: [45, 41, 43, 40].map(r => bassBar(r, true)),

@@ -47,3 +47,6 @@ Crash's collision is a flat disc at his feet (like the original trilogy), not a 
 
 ## Game Over
 If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, or the Dr. Neo Cortex fight) with 3 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
+
+## World map
+After you beat level 1, Ripper Roo, and level 2, a 3-D map of the island plays: the camera flies over it, then follows Crash as he runs along the road from the stage you just beat to the next one (the trail turns gold behind him), and he jumps for joy when he arrives. Tap the screen or press Enter to skip it. Add `?nomap` to the page address to skip it automatically (handy for testing).

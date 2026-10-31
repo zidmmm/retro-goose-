@@ -27,7 +27,8 @@ let dpr = DPR_MAX;
 renderer.setPixelRatio(dpr);
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
-renderer.domElement.addEventListener('webglcontextlost', e => e.preventDefault());   // lets the browser restore the context instead of leaving a black screen
+renderer.domElement.addEventListener('webglcontextlost', e => e.preventDefault());
+renderer.domElement.addEventListener('pointerdown', () => { if (state === 'map') startOrRestart(); });   // tap the screen to skip the world map   // lets the browser restore the context instead of leaving a black screen
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x4f7a52);
 scene.fog = new THREE.Fog(0x4f7a52, 22, 85);
@@ -529,6 +530,7 @@ function startOrRestart() {
   unlockAudio();
   if (performance.now() < uiLockUntil) return;
   if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); setTimeout(checkSound, 900); }
+  else if (state === 'map') skipMap();                        // tap / Enter skips the world map
   else if (state === 'over') resetGame(retryStage);
   else if (state === 'won') resetGame('level1');
 }
@@ -537,6 +539,7 @@ function stageKey() { return cortex.active ? 'cortex' : chase.active ? 'chase' :
 const STAGE_NAMES = { level1: 'level 1', boss1: 'the Ripper Roo fight', chase: 'level 2 (the boulder chase)', cortex: 'the Dr. Neo Cortex fight' };
 let retryStage = 'level1';                   // the stage you got Game Over in: that is where you start again
 function resetGame(stage = 'level1') {
+  if (mapSt.active) { mapSt.active = false; mapRoot.visible = false; scene.fog = mapSt.saved.fog; scene.background = mapSt.saved.bg; camera.far = mapSt.saved.far; camera.updateProjectionMatrix(); document.getElementById('mapBanner').hidden = true; document.getElementById('mapHint').hidden = true; }
   removeQueue.length = 0; bossReset(); stagesReset();
   lives = START_LIVES; fruitCount = 0; cratesBroken = 0; masks = 0; invincible = 0; checkpoint.set(0, 0, 0);
   for (const c of crates) {
@@ -753,11 +756,9 @@ function spawnBoom(p, size = 1) {
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
   ball.position.copy(p); ball.scale.setScalar(size); ball.userData = { life: 0.5 }; scene.add(ball); booms.push(ball);
 }
-function startBoss() {                       // reached the portal: fade out, drop into the arena
-  state = 'transition'; uiLockUntil = performance.now() + 900;
+function startBoss() {                       // reached the portal: world map, then the arena
   toast('LEVEL COMPLETE!'); sfx('portal'); music(null);
-  bossUI.fade.classList.add('on');
-  setTimeout(() => { enterBoss(); state = 'play'; bossUI.fade.classList.remove('on'); }, 1300);
+  fadeThen(() => enterMap(0, 1, 'LEVEL COMPLETE!', enterBoss), 1100);
 }
 function enterBoss() {                       // put Crash in Ripper Roo's arena with a fresh fight
   clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1.5, bigT: 8 });
@@ -903,7 +904,10 @@ function fadeThen(cb, ms = 1300) {          // fade to black, run cb (teleport e
 }
 function startChase() {
   toast('RIPPER ROO DEFEATED!'); sfx('victory'); music(null);
-  fadeThen(enterChase, 2200);
+  fadeThen(() => {
+    boss.active = false; boss.root.visible = false; bossShadow.visible = false; clearRocks(); bossUI.bar.hidden = true;
+    enterMap(1, 2, 'RIPPER ROO DEFEATED!', enterChase);
+  }, 1800);
 }
 function enterChase() {                      // put Crash at the start of the boulder chase
   boss.active = false; boss.root.visible = false; bossShadow.visible = false; clearRocks(); bossUI.bar.hidden = true;
@@ -939,7 +943,10 @@ function resetPads() {
 }
 function startCortex() {
   toast('LEVEL COMPLETE!'); sfx('portal'); music(null); setRumble(0);
-  fadeThen(enterCortex);
+  fadeThen(() => {
+    chase.active = false; chase.boulder.visible = false; dangerEl.style.opacity = 0;
+    enterMap(2, 3, 'LEVEL COMPLETE!', enterCortex);
+  }, 1100);
 }
 function enterCortex() {                     // put Crash in Dr. Neo Cortex's lab with a fresh fight
   {
@@ -1166,6 +1173,150 @@ function updateCortex(dt) {
   }
 }
 
+// ---------- 3-D world map, shown between stages ----------
+// An island with a winding path through the four stages. Crash runs from the stage you just beat to the next one while the camera follows.
+const MAP_X = -3000;                         // the map lives far away from the levels
+const MAP_NODES = [
+  { name: 'LEVEL 1', sub: 'THE JUNGLE', p: [-50, -18] }, { name: 'RIPPER ROO', sub: 'BOSS FIGHT', p: [-20, 10] },
+  { name: 'LEVEL 2', sub: 'BOULDER CHASE', p: [22, -14] }, { name: 'DR. NEO CORTEX', sub: 'FINAL BOSS', p: [52, 18] },
+];
+const mapRoot = new THREE.Group(); mapRoot.position.x = MAP_X; mapRoot.visible = false; scene.add(mapRoot);
+const mapSt = { active: false, finishing: false, t: 0, from: 0, to: 1, title: '', next: null, path: [], idx: [], spacing: 1, dots: [], rings: [], clouds: [], labels: [], saved: null, dir: new THREE.Vector3(0, 0, 1), s: 0 };
+const mapH = (x, z) => {                     // island height: a hill in the middle sloping down to the sea
+  const m = 1 - (x * x / (70 * 70) + z * z / (48 * 48));
+  if (m <= -0.15) return -2;
+  const bump = Math.sin(x * 0.09 + 1) * Math.cos(z * 0.11) * 1.1 + Math.sin(x * 0.21) * Math.sin(z * 0.17) * 0.35;
+  return Math.max(-1.8, m * 4.2 - 0.9 + bump * Math.max(0, Math.min(1, m * 3)));
+};
+function labelSprite(text, sub) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 160; const g = c.getContext('2d'); g.textAlign = 'center';
+  let size = 64; g.font = `bold ${size}px "Trebuchet MS", sans-serif`; while (g.measureText(text).width > 470 && size > 30) { size -= 4; g.font = `bold ${size}px "Trebuchet MS", sans-serif`; }
+  g.lineWidth = 10; g.strokeStyle = '#3a1a00'; g.fillStyle = '#ffe28a'; g.strokeText(text, 256, 72); g.fillText(text, 256, 72);
+  g.font = 'bold 36px "Trebuchet MS", sans-serif'; g.lineWidth = 8; g.fillStyle = '#ffffff'; g.strokeText(sub, 256, 126); g.fillText(sub, 256, 126);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthTest: false })); s.scale.set(13, 4.1, 1); s.renderOrder = 10; return s;
+}
+function buildMap() {
+  // the path
+  const pts = [[-50, -18], [-44, -6], [-34, 4], [-20, 10], [-6, 16], [6, 6], [14, -6], [22, -14], [34, -16], [46, -8], [50, 4], [52, 18]];
+  const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'catmullrom', 0.5);
+  const N = 220, path = curve.getSpacedPoints(N); mapSt.path = path; mapSt.spacing = curve.getLength() / N;
+  mapSt.idx = MAP_NODES.map(n => { let best = 0, bd = 1e9; path.forEach((q, i) => { const d = Math.hypot(q.x - n.p[0], q.z - n.p[1]); if (d < bd) { bd = d; best = i; } }); return best; });
+  // low-poly terrain coloured by height, with a dirt road along the path
+  const geo = new THREE.PlaneGeometry(150, 106, 120, 84); geo.rotateX(-Math.PI / 2);
+  const pos = geo.attributes.position, col = new Float32Array(pos.count * 3), c = new THREE.Color();
+  for (let i = 0; i < pos.count; i++) {
+    const x = pos.getX(i), z = pos.getZ(i), h = mapH(x, z); pos.setY(i, h);
+    let dmin = 1e9; for (let k = 0; k < path.length; k += 2) { const d = Math.hypot(path[k].x - x, path[k].z - z); if (d < dmin) dmin = d; }
+    if (dmin < 2.1 && h > -0.4) c.set(0xb98245);                       // road
+    else if (h < -0.2) c.set(0xe2cf8f);                                 // beach
+    else if (h < 1.0) c.set(0x5fb84a);                                  // grass
+    else if (h < 2.4) c.set(0x3f9a3a);                                  // jungle
+    else c.set(0x7a8c5a);                                               // hilltop
+    const j = 0.92 + Math.random() * 0.16; col[i * 3] = c.r * j; col[i * 3 + 1] = c.g * j; col[i * 3 + 2] = c.b * j;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(col, 3)); geo.computeVertexNormals();
+  mapRoot.add(new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, flatShading: true })));
+  const sea = new THREE.Mesh(new THREE.PlaneGeometry(6000, 6000), new THREE.MeshLambertMaterial({ color: 0x2b86e0 })); sea.rotation.x = -Math.PI / 2; sea.position.y = -0.5; mapRoot.add(sea);
+  // trees (away from the road and the stage markers)
+  for (let i = 0; i < 260; i++) {
+    const x = (Math.random() - 0.5) * 140, z = (Math.random() - 0.5) * 96, h = mapH(x, z);
+    if (h < 0.1 || path.some((q, k) => k % 3 === 0 && Math.hypot(q.x - x, q.z - z) < 4.5) || MAP_NODES.some(n => Math.hypot(n.p[0] - x, n.p[1] - z) < 9)) continue;
+    const s = 3.5 + Math.random() * 3, t = new THREE.Sprite(M.tree); t.scale.set(s * 1.15, s, 1); t.position.set(x, h + s / 2 - 0.4, z); mapRoot.add(t);
+  }
+  // clouds
+  const cc = document.createElement('canvas'); cc.width = 64; cc.height = 24; const cg = cc.getContext('2d'); cg.fillStyle = '#ffffff';
+  for (const [x, y, w, h] of [[8, 10, 48, 10], [16, 5, 30, 8], [4, 14, 56, 8], [26, 2, 16, 6]]) cg.fillRect(x, y, w, h);
+  const ct = new THREE.CanvasTexture(cc); ct.magFilter = THREE.NearestFilter; ct.minFilter = THREE.NearestFilter; ct.colorSpace = THREE.SRGBColorSpace;
+  for (let i = 0; i < 9; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: ct, transparent: true, opacity: 0.9, fog: false })); s.scale.set(16 + Math.random() * 8, 6, 1); const a = Math.random() * Math.PI * 2, r = 95 + Math.random() * 60; s.position.set(Math.cos(a) * r, 20 + Math.random() * 12, Math.sin(a) * r * 0.7); mapRoot.add(s); mapSt.clouds.push(s); }
+  // stage markers: a pulsing ring, a signpost with the stage name, and a landmark
+  const wood = new THREE.MeshLambertMaterial({ color: 0x7a4a22 });
+  MAP_NODES.forEach((n, i) => {
+    const [x, z] = n.p, h = mapH(x, z), g = new THREE.Group(); g.position.set(x, h, z);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.4, 0.32, 8, 28), new THREE.MeshBasicMaterial({ color: 0x777777 })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.3; g.add(ring); mapSt.rings.push(ring);
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.16, 6, 6), wood); post.position.set(-4.4, 3, 0); g.add(post);
+    const lab = labelSprite(n.name, n.sub); lab.position.set(-4.4, 9.2, 0); g.add(lab); mapSt.labels.push(lab);
+    if (i === 0) { for (const [dx, dz] of [[3, 3], [5, -2]]) { const cr = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.6, 1.6), M.crate); cr.position.set(dx, 0.8, dz); cr.rotation.y = dx; g.add(cr); } }
+    if (i === 1) { for (let k = 0; k < 7; k++) { const a = k / 7 * Math.PI * 2, pil = new THREE.Mesh(new THREE.BoxGeometry(1.3, 3.4, 1.3), M.wall[0]); pil.position.set(Math.cos(a) * 7.2, 1.7, Math.sin(a) * 7.2); g.add(pil); } }
+    if (i === 2) { const b = new THREE.Mesh(new THREE.IcosahedronGeometry(2.6, 1), new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0xcdbca0, flatShading: true })); b.position.set(5.5, 2.6, 0); g.add(b); }
+    if (i === 3) {
+      const tw = new THREE.Mesh(new THREE.BoxGeometry(4.4, 11, 4.4), M.wall[0]); tw.position.set(5, 5.5, -2); g.add(tw);
+      const roof = new THREE.Mesh(new THREE.ConeGeometry(3.6, 3.6, 4), new THREE.MeshLambertMaterial({ color: 0x2c2f3a })); roof.position.set(5, 12.8, -2); roof.rotation.y = Math.PI / 4; g.add(roof);
+      const orb = new THREE.Mesh(new THREE.SphereGeometry(0.9, 10, 8), new THREE.MeshBasicMaterial({ color: 0x66ff66 })); orb.position.set(5, 15.6, -2); g.add(orb);
+    }
+    mapRoot.add(g);
+  });
+  // dotted trail along the road
+  const dotGeo = new THREE.BoxGeometry(0.8, 0.35, 0.8);
+  for (let k = 3; k < path.length - 2; k += 3) { const q = path[k], d = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xffffff })); d.position.set(q.x, mapH(q.x, q.z) + 0.3, q.z); d.userData.k = k; mapRoot.add(d); mapSt.dots.push(d); }
+}
+buildMap();
+
+const NO_MAP = new URLSearchParams(location.search).has('nomap');   // (testing aid: skip the world map)
+function enterMap(from, to, title, next) {
+  if (NO_MAP) { next(); return; }   // called while the screen is black: set up the map and drop Crash at the stage he just finished
+  const S = mapSt;
+  S.active = true; S.finishing = false; S.t = 0; S.from = from; S.to = to; S.title = title; S.next = next; S.s = S.idx[from];
+  S.saved = { fog: scene.fog, bg: scene.background, far: camera.far };
+  scene.fog = new THREE.Fog(0x8fd3ff, 260, 1500); scene.background = new THREE.Color(0x8fd3ff); camera.far = 3000; camera.updateProjectionMatrix();   // pale haze toward the horizon
+  mapRoot.visible = true; state = 'map'; S.labels.forEach(l => { l.visible = true; });
+  S.rings.forEach((r, i) => r.material.color.setHex(i <= from ? 0x44dd66 : i === to ? 0xffcc33 : 0x777777));   // beaten = green, next = gold, ahead = grey
+  S.dots.forEach(d => d.material.color.setHex(d.userData.k <= S.idx[from] ? 0xffd24a : 0xffffff));
+  const q = S.path[S.idx[from]]; player.pos.set(MAP_X + q.x, mapH(q.x, q.z), q.z); player.vel.set(0, 0, 0); player.grounded = true; player.spin = 0; player.hurt = 0; player.facing = 0;
+  S.dir.set(0, 0, 1); S.camInit = false; S.phase = '';
+  const b = document.getElementById('mapBanner'), hint = document.getElementById('mapHint'); b.textContent = title; b.hidden = false; hint.hidden = false;
+  bossUI.bar.hidden = true; music('map');
+}
+function updateMap(dt) {
+  const S = mapSt; S.t += dt;
+  const A = 2.4, run = Math.max(1, (S.idx[S.to] - S.idx[S.from]) * S.spacing / 9), C = 2.0;   // overview, then the run (9 units a second), then the arrival
+  const banner = document.getElementById('mapBanner');
+  for (const c of S.clouds) { c.position.x += dt * 1.2; if (c.position.x > 160) c.position.x = -160; }
+  S.rings.forEach((r, i) => { r.rotation.z += dt; r.scale.setScalar(i === S.to ? 1 + Math.sin(S.t * 5) * 0.12 : 1); });
+  const phase = S.t < A ? 'overview' : S.t < A + run ? 'run' : 'arrive';
+  if (phase !== S.phase) {                                                                         // the banner follows the phase, however the time got there
+    S.phase = phase;
+    if (phase === 'run') banner.textContent = 'NEXT: ' + MAP_NODES[S.to].name;
+    if (phase === 'arrive') { banner.textContent = MAP_NODES[S.to].name + ' - ' + MAP_NODES[S.to].sub; sfx('checkpoint'); }
+  }
+  for (const l of S.labels) l.visible = phase === 'overview';                                      // the signs show on the overview; once he runs, the banner tells you where you are
+  if (phase === 'overview') { player.vel.set(0, 0, 0); }
+  else if (phase === 'run') {
+    S.s = S.idx[S.from] + (S.t - A) * 9 / S.spacing;
+    const i = Math.min(S.path.length - 2, Math.floor(S.s)), f = S.s - i, a = S.path[i], b = S.path[i + 1];
+    const x = a.x + (b.x - a.x) * f, z = a.z + (b.z - a.z) * f;
+    S.dir.set(b.x - a.x, 0, b.z - a.z).normalize();
+    player.pos.set(MAP_X + x, mapH(x, z), z); player.vel.set(S.dir.x * 8, 0, S.dir.z * 8); player.facing = Math.atan2(S.dir.x, S.dir.z); player.grounded = true;
+    for (const d of S.dots) if (d.userData.k <= S.s) d.material.color.setHex(0xffd24a);   // the trail turns gold behind him
+  } else {
+    const k = S.t - A - run, q = S.path[S.idx[S.to]], h = mapH(q.x, q.z);
+    player.pos.set(MAP_X + q.x, h + Math.abs(Math.sin(k * 6)) * 1.1, q.z); player.vel.set(0, 0, 0); player.grounded = false;
+    player.spin = Math.max(0, 0.5 - (k % 0.9) * 0.6); player.facing = Math.PI;                     // he spins and jumps for joy at the next stage
+    if (S.t > A + run + C) finishMap();
+  }
+  player.pos.y = Math.max(player.pos.y, -1);
+}
+function mapCamera(dt) {                      // overview first, then a chase camera behind Crash, then a front view when he arrives
+  const S = mapSt, A = 2.4, run = Math.max(1, (S.idx[S.to] - S.idx[S.from]) * S.spacing / 9), px = player.pos.x, py = player.pos.y, pz = player.pos.z;
+  let want = tmp, look = hitPt;
+  if (S.t < A) { const a = -0.55 + S.t * 0.2; want.set(MAP_X + Math.sin(a) * 100, 64, Math.cos(a) * 100 + 8); look.set(MAP_X, 1, 0); }
+  else if (S.t < A + run) { want.set(px - S.dir.x * 15 - S.dir.z * 5, py + 11, pz - S.dir.z * 15 + S.dir.x * 5); look.set(px + S.dir.x * 7, py + 1.5, pz + S.dir.z * 7); }
+  else { want.set(px + 4, py + 11, pz + 26); look.set(px, py + 2, pz); }
+  if (!S.camInit) { camera.position.copy(want); S.camInit = true; } else camera.position.lerp(want, 1 - Math.exp(-3 * dt));
+  camera.lookAt(look);
+}
+function finishMap() {                        // fade out, restore the game's look, and start the next stage
+  if (mapSt.finishing) return; mapSt.finishing = true;
+  fadeThen(() => {
+    const S = mapSt;
+    S.active = false; mapRoot.visible = false; scene.fog = S.saved.fog; scene.background = S.saved.bg; camera.far = S.saved.far; camera.updateProjectionMatrix();
+    document.getElementById('mapBanner').hidden = true; document.getElementById('mapHint').hidden = true;
+    player.vel.set(0, 0, 0); player.spin = 0; player.grounded = false; camSnap = true;
+    S.next();
+  }, 900);
+}
+function skipMap() { if (mapSt.active) finishMap(); }
+
 // ---------- physics ----------
 const STEP_SMALL = 0.35;  // lips this low are stepped over automatically
 const STEP_UP = 0.75;   // how tall a lip you can walk onto without jumping (ramps are walked up smoothly)
@@ -1252,6 +1403,7 @@ function update(dt) {
     u.life -= dt; u.v.y -= 20 * dt; d.position.addScaledVector(u.v, dt); d.rotation.x += dt * 8; d.rotation.z += dt * 6;
     if (u.life <= 0) { scene.remove(d); debris.splice(i, 1); }
   }
+  if (state === 'map') updateMap(dt);
   if (state !== 'play') return;
 
   // input
@@ -1396,15 +1548,18 @@ function frame() {
     else { mt.color.setHex(0xffffff); mt.emissive.setHex(0x2a2a2a); }
   }
   // camera
-  // camera per stage: normal / boss arena / chase (in front of Crash, looking back at the boulder) / Cortex's lab
-  const cam = chase.active ? { dx: 0.4, dy: 7.4, dz: 13, ly: 0.8, lz: -3 } : boss.active ? { dx: 0.4, dy: 5.8, dz: 11, ly: 1.8, lz: -9 } : cortex.active ? { dx: 0.4, dy: 6, dz: 11, ly: 3.2, lz: -9 } : { dx: 0.5, dy: 4.8, dz: 9.5, ly: 1.2, lz: -4 };
-  camTarget.set(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.dy, player.pos.z + cam.dz);
-  if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
-  else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
-  camera.lookAt(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.ly, player.pos.z + cam.lz);
+  if (mapSt.active) mapCamera(dt);
+  else {
+    // camera per stage: normal / boss arena / chase (in front of Crash, looking back at the boulder) / Cortex's lab
+    const cam = chase.active ? { dx: 0.4, dy: 7.4, dz: 13, ly: 0.8, lz: -3 } : boss.active ? { dx: 0.4, dy: 5.8, dz: 11, ly: 1.8, lz: -9 } : cortex.active ? { dx: 0.4, dy: 6, dz: 11, ly: 3.2, lz: -9 } : { dx: 0.5, dy: 4.8, dz: 9.5, ly: 1.2, lz: -4 };
+    camTarget.set(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.dy, player.pos.z + cam.dz);
+    if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
+    else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
+    camera.lookAt(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.ly, player.pos.z + cam.lz);
+  }
 
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { retry: () => retryStage, cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { scene, mapH, mapSt, enterMap, skipMap, retry: () => retryStage, cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
