@@ -102,23 +102,51 @@ function buildLevel() {
   addBox(0, 0.6, -80, 8, 1.2, 3, M.step);
   addBox(0, 1.1, -85, 8, 2.2, 3, M.step);
   crate(-2, 2.2, -85, 'normal', 5); crate(2, 2.2, -85, 'normal', 5); crate(0, 2.2, -85, 'aku');
-  enemy(0, 0, -76, 'x', 3); enemy(0, 2.2, -90 + 0, 'x', 3);
+  enemy(0, 0, -76, 'x', 3); enemy(0, 0, -90, 'x', 3);
   enemy(0, 0, -96, 'x', 3);
   fruitLine(0, 2.0, -78, -83, 3); fruitLine(0, 3.4, -88, -92, 3);
   spike(0, 0, -93);
-  // 6. finale
-  platform(0, -105, -124, 7);
-  crate(0, 0, -107, 'checkpoint'); crate(0, 0, -110, 'aku'); crate(-2, 0, -112, 'normal', 8); crate(2, 0, -112, 'normal', 8);
-  fruitLine(0, 0.9, -108, -118, 6);
+  // 6. long arena with a wave of patrolling enemies
+  platform(0, -105, -128, 9);
+  crate(0, 0, -107, 'checkpoint'); crate(-3, 0, -112, 'normal', 5); crate(3, 0, -112, 'normal', 5);
+  crate(0, 0, -115, 'aku'); crate(-3, 0, -121, 'normal', 5); crate(3, 0, -121, 'normal', 5);
+  enemy(0, 0, -110, 'x', 3.5); enemy(0, 0, -118, 'x', 3.5); enemy(0, 0, -122, 'x', 3.5); enemy(0, 0, -125, 'x', 3.5);
+  fruitLine(0, 0.9, -108, -114, 4); fruitLine(0, 0.9, -116, -126, 6);
+  // 7. chain of moving platforms with an island between
+  const mv1 = addBox(0, -1, -131, 3.4, 2, 3.4, M.moving);
+  mv1.mover = { axis: 'z', origin: -131, range: 2.2, speed: 1.2 }; movers.push(mv1);
+  platform(0, -136, -141, 5);
+  crate(0, 0, -138.5, 'normal', 5);
+  const mv2 = addBox(0, -1, -144, 3.4, 2, 3.4, M.moving);
+  mv2.mover = { axis: 'z', origin: -144, range: 2.2, speed: 1.0 }; movers.push(mv2);
+  fruitLine(0, 1.2, -129, -133, 3); fruitLine(0, 1.2, -142, -146, 3);
+  // 8. long narrow bridge: spikes and enemies that patrol along it
+  platform(0, -149, -178, 2.8, 0, M.dirt);
+  crate(0, 0, -150.5, 'checkpoint'); crate(0, 0, -152, 'aku');
+  for (const z of [-155, -163, -171]) { spike(0, 0, z); fruit(0, 2.3, z); }
+  enemy(0, 0, -159, 'z', 2.5); enemy(0, 0, -167, 'z', 2.5); enemy(0, 0, -175, 'z', 2.5);
+  // 9. climb to a raised plateau
+  platform(0, -181, -187, 8);
+  addBox(0, 0.6, -185.5, 8, 1.2, 3, M.step);
+  addBox(0, 1.2, -195, 8, 2.4, 16, M.step);
+  crate(-2.5, 2.4, -192, 'normal', 8); crate(2.5, 2.4, -192, 'normal', 8); crate(0, 2.4, -196, 'aku');
+  enemy(0, 2.4, -190, 'x', 3); enemy(0, 2.4, -194, 'x', 3); enemy(0, 2.4, -199, 'x', 3);
+  spike(-2, 2.4, -200); spike(2, 2.4, -200);
+  fruitLine(0, 3.4, -188, -202, 7);
+  // 10. finale
+  platform(0, -206, -233, 8);
+  crate(0, 0, -207.5, 'checkpoint'); crate(-2.5, 0, -212, 'normal', 8); crate(2.5, 0, -212, 'normal', 8); crate(0, 0, -215, 'aku');
+  enemy(0, 0, -218, 'x', 3); enemy(0, 0, -222, 'x', 3); enemy(0, 0, -226, 'x', 3);
+  fruitLine(0, 0.9, -208, -230, 10);
   finish = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.25, 12, 32), M.portal);
-  finish.position.set(0, 2, -120); scene.add(finish);
+  finish.position.set(0, 2, -230); scene.add(finish);
   const disc = new THREE.Mesh(new THREE.CircleGeometry(1.45, 24), M.portal); finish.add(disc);
 
   // scenery
-  const water = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), M.water);
-  water.rotation.x = -Math.PI / 2; water.position.y = -12; scene.add(water);
-  for (let i = 0; i < 90; i++) {
-    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * 150, x = side * (6 + Math.random() * 18);
+  const water = new THREE.Mesh(new THREE.PlaneGeometry(700, 700), M.water);
+  water.rotation.x = -Math.PI / 2; water.position.set(0, -12, -120); scene.add(water);
+  for (let i = 0; i < 170; i++) {
+    const side = Math.random() < 0.5 ? -1 : 1, z = 10 - Math.random() * 260, x = side * (6 + Math.random() * 18);
     const h = 5 + Math.random() * 6;
     const t = new THREE.Sprite(M.tree); t.scale.set(h * 0.7, h, 1); t.position.set(x, h / 2 - 1.5, z); scene.add(t);
   }
@@ -448,5 +476,5 @@ function frame() {
   requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
