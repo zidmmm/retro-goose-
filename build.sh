@@ -11,8 +11,9 @@ h=re.sub(r'<script type="importmap">.*?</script>\n','',h)
 b=open('dist/bundle.js').read().replace('</script','<\\/script')
 g=base64.b64encode(open('assets/player.glb','rb').read()).decode()
 w=base64.b64encode(open('assets/wumpa.png','rb').read()).decode()
+k=base64.b64encode(open('assets/aku_aku.glb','rb').read()).decode()
 h=h.replace('<script type="module" src="./main.js"></script>',
- '<script>window.__PLAYER_B64="'+g+'";window.__WUMPA_B64="'+w+'"</script>\n<script>'+b+'</script>')
+ '<script>window.__PLAYER_B64="'+g+'";window.__WUMPA_B64="'+w+'";window.__AKU_B64="'+k+'"</script>\n<script>'+b+'</script>')
 open('dist/game.html','w').write(h)
 # fragment (no doctype/html/head/body) for hosts that supply their own page skeleton
 style=re.search(r'<style>.*?</style>',h,re.S).group(0)

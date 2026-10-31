@@ -43,6 +43,14 @@ const crateTex = (checkpoint) => canvasTex(32, 32, (g, w, h) => {
     dot(g, 10, 10, '#ffeb3b', 12, 3); dot(g, 10, 19, '#ffeb3b', 12, 3); dot(g, 10, 10, '#ffeb3b', 3, 12);
   }
 }, { repeat: false });
+const akuCrateTex = () => canvasTex(32, 32, (g, w, h) => {
+  speckle(g, w, h, '#c98a3c', ['#a06a24', '#dda052'], 0.25);
+  for (let y = 7; y < h; y += 8) dot(g, 0, y, '#a06a24', w, 1);
+  dot(g, 0, 0, '#6b4210', w, 3); dot(g, 0, h - 3, '#6b4210', w, 3); dot(g, 0, 0, '#6b4210', 3, h); dot(g, w - 3, 0, '#6b4210', 3, h);
+  dot(g, 8, 6, '#6b4210', 16, 20); dot(g, 9, 7, '#e8a33a', 14, 18);   // mask
+  dot(g, 9, 7, '#d4382c', 14, 3); dot(g, 11, 12, '#1b1b1b', 3, 3); dot(g, 18, 12, '#1b1b1b', 3, 3); // brow + eyes
+  dot(g, 14, 17, '#1b1b1b', 4, 5); dot(g, 15, 18, '#ffffff', 2, 1);                             // mouth
+}, { repeat: false });
 const waterTex = () => canvasTex(32, 32, (g, w, h) => {
   dot(g, 0, 0, '#1e6fc9', w, h);
   for (let i = 0; i < 40; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#4a9ae8' : '#1558a8', 3 + ((rnd() * 4) | 0), 1);
@@ -82,7 +90,7 @@ export function makeMaterials() {
     grass: [side, side, top, dirt, side, side],       // box face order: +x -x +y -y +z -z
     dirt: [dirt, dirt, dirt, dirt, dirt, dirt],
     moving: [metal, metal, metal, metal, metal, metal],
-    crate: lambert(crateTex(false)), checkpoint: lambert(crateTex(true)),
+    crate: lambert(crateTex(false)), akuCrate: lambert(akuCrateTex()), checkpoint: lambert(crateTex(true)),
     water, tree: sprite(treeTex()), enemy: sprite(enemyTex()), fruit: sprite(wumpaTex()),
   };
 }

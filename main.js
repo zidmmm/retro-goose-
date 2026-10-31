@@ -54,7 +54,7 @@ function platform(x, z0, z1, w, top = 0, material = M.grass) {
   return addBox(x, top - h / 2, (z0 + z1) / 2, w, h, d, material);
 }
 function crate(x, y, z, kind = 'normal', fruitCount = 0) {
-  const s = addBox(x, y + 0.5, z, 1, 1, 1, kind === 'checkpoint' ? M.checkpoint : M.crate, { crate: true });
+  const s = addBox(x, y + 0.5, z, 1, 1, 1, kind === 'checkpoint' ? M.checkpoint : kind === 'aku' ? M.akuCrate : M.crate, { crate: true });
   s.kind = kind; s.fruitCount = fruitCount; crates.push(s);
 }
 function fruit(x, y, z) {
@@ -81,7 +81,7 @@ function spike(x, y, z) {
 function buildLevel() {
   // 1. start area
   platform(0, 4, -22, 7);
-  crate(-1.5, 0, -8, 'normal', 3); crate(1.5, 0, -8, 'normal', 3); crate(0, 0, -14, 'normal', 5);
+  crate(-1.5, 0, -8, 'normal', 3); crate(1.5, 0, -8, 'normal', 3); crate(0, 0, -14, 'normal', 5); crate(-2, 0, -18, 'aku');
   fruitLine(0, 0.9, -3, -6, 3); fruitLine(0, 0.9, -16, -20, 4);
   // 2. first gap + patrol platform
   platform(0, -25, -42, 7);
@@ -100,14 +100,14 @@ function buildLevel() {
   platform(0, -72, -102, 8);
   addBox(0, 0.6, -80, 8, 1.2, 3, M.step);
   addBox(0, 1.1, -85, 8, 2.2, 3, M.step);
-  crate(-2, 2.2, -85, 'normal', 5); crate(2, 2.2, -85, 'normal', 5);
+  crate(-2, 2.2, -85, 'normal', 5); crate(2, 2.2, -85, 'normal', 5); crate(0, 2.2, -85, 'aku');
   enemy(0, 0, -76, 'x', 3); enemy(0, 2.2, -90 + 0, 'x', 3);
   enemy(0, 0, -96, 'x', 3);
   fruitLine(0, 2.0, -78, -83, 3); fruitLine(0, 3.4, -88, -92, 3);
   spike(0, 0, -93);
   // 6. finale
   platform(0, -105, -124, 7);
-  crate(0, 0, -107, 'checkpoint'); crate(-2, 0, -112, 'normal', 8); crate(2, 0, -112, 'normal', 8);
+  crate(0, 0, -107, 'checkpoint'); crate(0, 0, -110, 'aku'); crate(-2, 0, -112, 'normal', 8); crate(2, 0, -112, 'normal', 8);
   fruitLine(0, 0.9, -108, -118, 6);
   finish = new THREE.Mesh(new THREE.TorusGeometry(1.6, 0.25, 12, 32), M.portal);
   finish.position.set(0, 2, -120); scene.add(finish);
@@ -149,12 +149,26 @@ const onModel = gltf => {
   animator = makeAnimator(model);
 };
 
-const loader = new GLTFLoader();
-if (window.__PLAYER_B64) { // single-file build: model is embedded, no network fetch
-  const bin = atob(window.__PLAYER_B64), buf = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
-  loader.parse(buf.buffer, '', onModel, placeholder);
-} else loader.load('./assets/player.glb', onModel, undefined, placeholder);
+function loadGlb(b64, url, onLoad, onError) {
+  const loader = new GLTFLoader();
+  if (b64) { // single-file build: model is embedded, no network fetch
+    const bin = atob(b64), buf = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+    loader.parse(buf.buffer, '', onLoad, onError);
+  } else loader.load(url, onLoad, undefined, onError);
+}
+loadGlb(window.__PLAYER_B64, './assets/player.glb', onModel, placeholder);
+
+// ---------- Aku Aku (floating mask companion) ----------
+const aku = new THREE.Group(); aku.visible = false; scene.add(aku);
+const akuMats = [];
+loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
+  const model = gltf.scene, box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
+  const wrap = new THREE.Group(); wrap.add(model); wrap.scale.setScalar(1.9 / size.y);
+  const c = box.getCenter(new THREE.Vector3()); model.position.sub(c);
+  model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; for (const mt of [].concat(o.material)) { akuMats.push(mt); mt.fog = false; } } });
+  aku.add(wrap);
+}, () => {});
 
 // ---------- input ----------
 const keys = {};
@@ -195,18 +209,20 @@ function beep(f, d = 0.1, type = 'square', vol = 0.06, slide = 0) {
 }
 
 // ---------- game state ----------
+let masks = 1, invincible = 0;
 let state = 'title', lives = START_LIVES, fruitCount = 0, cratesBroken = 0, totalCrates = crates.length;
 let checkpoint = new THREE.Vector3(0, 0, 0), time = 0;
-const hud = { lives: document.getElementById('lives'), fruit: document.getElementById('fruit'), crates: document.getElementById('crates') };
+const hud = { lives: document.getElementById('lives'), fruit: document.getElementById('fruit'), crates: document.getElementById('crates'), aku: document.getElementById('aku') };
 const msg = document.getElementById('msg'), msgbody = document.getElementById('msgbody');
 function updateHud() {
   hud.lives.textContent = `♥ x${lives}`; hud.fruit.innerHTML = `<img src="${WUMPA_URL}" height="26" style="image-rendering:pixelated;vertical-align:middle"> ${fruitCount}`;
+  hud.aku.textContent = invincible > 0 ? `AKU AKU INVINCIBLE ${Math.ceil(invincible)}s` : masks > 0 ? `AKU AKU x${masks}` : '';
   hud.crates.textContent = `📦 ${cratesBroken}/${totalCrates}`;
 }
 function showMsg(title, body) {
   msg.querySelector('h1').textContent = title; msgbody.innerHTML = body; msg.classList.remove('hidden');
 }
-showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons`);
+showMsg('RETRO RUN', `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Aku Aku crates give you a mask that blocks one hit. Collect three for a burst of invincibility.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti (CC BY 4.0)</small>`);
 function startOrRestart() {
   if (ac === undefined) beep(1, 0.01, 'sine', 0.0001);
   if (state === 'title' || state === 'over' || state === 'won') {
@@ -216,6 +232,12 @@ function startOrRestart() {
 }
 function respawn() {
   player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.hurt = 1;
+}
+function hit() {
+  if (player.hurt > 0.5 || invincible > 0) return;
+  if (masks <= 0) return die();
+  masks--; player.hurt = 1; player.vel.y = JUMP_V * 0.6; player.grounded = false;
+  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud();
 }
 function die() {
   if (player.hurt > 0.5) return;
@@ -234,6 +256,10 @@ function breakCrate(c, bounce) {
   const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
   if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); }
   else beep(220, 0.15, 'square', 0.07, -80);
+  if (c.kind === 'aku') {
+    beep(520, 0.3, 'triangle', 0.08, 500);
+    if (++masks >= 3) { masks = 0; invincible = 12; }
+  }
   addFruit(c.fruitCount || 0);
   if (bounce) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
   updateHud();
@@ -285,6 +311,7 @@ function update(dt) {
   // jump
   player.coyote = player.grounded ? COYOTE : player.coyote - dt;
   player.jumpBuf -= dt; player.spinCd -= dt; player.hurt -= dt;
+  if (invincible > 0) { const was = Math.ceil(invincible); invincible = Math.max(0, invincible - dt); if (Math.ceil(invincible) !== was) updateHud(); }
   if (player.jumpBuf > 0 && player.coyote > 0) {
     player.vel.y = JUMP_V; player.coyote = 0; player.jumpBuf = 0; player.grounded = false; beep(400, 0.15, 'square', 0.04, 250);
   }
@@ -325,17 +352,17 @@ function update(dt) {
     const dx = e.mesh.position.x - player.pos.x, dz = e.mesh.position.z - player.pos.z, dy = e.mesh.position.y - (player.pos.y + 0.5);
     if (dx * dx + dz * dz < 0.8 && Math.abs(dy) < 1.2) {
       const stomp = player.vel.y < 0 && player.pos.y > e.mesh.position.y - 0.1;
-      if (player.spin > 0 || stomp) {
+      if (player.spin > 0 || stomp || invincible > 0) {
         e.alive = false; e.mesh.visible = false; beep(150, 0.2, 'square', 0.07, -60);
         if (stomp && player.spin <= 0) { player.vel.y = JUMP_V * 0.8; }
         addFruit(2);
-      } else die();
+      } else hit();
     }
   }
   // spikes
   for (const s of spikes) {
     if (Math.abs(s.pos.x - player.pos.x) < 0.5 + HALF_W && Math.abs(s.pos.z - player.pos.z) < 0.5 + HALF_W &&
-        player.pos.y < s.pos.y + 0.6 && player.pos.y + PLAYER_H > s.pos.y) die();
+        player.pos.y < s.pos.y + 0.6 && player.pos.y + PLAYER_H > s.pos.y) hit();
   }
   // fall
   if (player.pos.y < -10) die();
@@ -373,6 +400,14 @@ function frame() {
   shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
 
   if (finish) { finish.rotation.z += dt; }
+  // Aku Aku hovers over the player's shoulder
+  aku.visible = masks > 0 || invincible > 0;
+  const akuTarget = tmp.set(player.pos.x - 1.4, player.pos.y + 2.5 + Math.sin(time * 2.4) * 0.15, player.pos.z + 0.4);
+  if (!aku.userData.init) { aku.position.copy(akuTarget); aku.userData.init = true; }
+  aku.position.lerp(akuTarget, 1 - Math.exp(-8 * dt));
+  aku.rotation.y = Math.sin(time * 1.5) * 0.35 + (player.vel.x * -0.02);
+  aku.scale.setScalar(1 + (invincible > 0 ? 0.15 + Math.sin(time * 12) * 0.05 : 0));
+  for (const mt of akuMats) if (mt.emissive) mt.emissive.setHex(invincible > 0 ? (Math.floor(time * 8) % 2 ? 0x2a5577 : 0x665522) : 0x2a2a2a);
   // camera
   camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
   camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
@@ -382,5 +417,5 @@ function frame() {
   requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (++masks >= 3) { masks = 0; invincible = 12; } } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
