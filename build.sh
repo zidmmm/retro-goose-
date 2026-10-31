@@ -8,6 +8,8 @@ python3 - <<'PY'
 import base64,re
 h=open('index.html').read()
 h=re.sub(r'<script type="importmap">.*?</script>\n','',h)
+logo=base64.b64encode(open('assets/logo.png','rb').read()).decode()
+h=h.replace('src="./assets/logo.png"','src="data:image/png;base64,'+logo+'"')
 b=open('dist/bundle.js').read().replace('</script','<\\/script')
 g=base64.b64encode(open('assets/player.glb','rb').read()).decode()
 w=base64.b64encode(open('assets/wumpa.png','rb').read()).decode()
