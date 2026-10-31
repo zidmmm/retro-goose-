@@ -1159,10 +1159,13 @@ function updateCortex(dt) {
 // ---------- physics ----------
 const STEP_SMALL = 0.35;  // lips this low are stepped over automatically
 const STEP_UP = 0.75;   // how tall a lip you can walk onto without jumping (ramps are walked up smoothly)
+// Crash's collision is a flat disc at his feet (like the original trilogy), not a box: the corners are round, so he slides around
+// crates, walls and ledge corners instead of catching on them.
+const clampTo = (v, lo, hi) => Math.min(Math.max(v, lo), hi);
 function overlaps(s, p) {
-  return p.x + HALF_W > s.min.x && p.x - HALF_W < s.max.x &&
-         p.z + HALF_W > s.min.z && p.z - HALF_W < s.max.z &&
-         p.y + PLAYER_H > s.min.y && p.y < s.max.y;
+  if (!(p.y + PLAYER_H > s.min.y && p.y < s.max.y)) return false;
+  const dx = p.x - clampTo(p.x, s.min.x, s.max.x), dz = p.z - clampTo(p.z, s.min.z, s.max.z);   // distance from the disc's centre to the solid's footprint
+  return dx * dx + dz * dz < HALF_W * HALF_W;
 }
 function moveAxis(axis, amount) {
   player.pos[axis] += amount;
@@ -1188,9 +1191,12 @@ function moveAxis(axis, amount) {
     } else if (!s.crate && s.max.y - p.y <= STEP_SMALL) {
       p.y = s.max.y; player.grounded = true; player.ground = s;                         // tiny lips never stop you
     } else {
-      // push out the way we came; when not moving along this axis (e.g. carried by a platform) take the nearest side
-      const toMin = s.min[axis] - HALF_W, toMax = s.max[axis] + HALF_W;
-      p[axis] = amount > 0 ? toMin : amount < 0 ? toMax : (p[axis] - toMin < toMax - p[axis] ? toMin : toMax);
+      const cx = clampTo(p.x, s.min.x, s.max.x), cz = clampTo(p.z, s.min.z, s.max.z), dx = p.x - cx, dz = p.z - cz, d = Math.hypot(dx, dz);
+      if (d > 1e-5) { const r = HALF_W + 0.002; p.x = cx + dx / d * r; p.z = cz + dz / d * r; }   // (a hair extra, so rounding can never leave the disc 'inside' and mistake the push for a landing)       // push the disc out along the surface normal: it slides around corners
+      else {                                                                          // centre is inside the footprint (e.g. carried into a wall): push out the way we came, or to the nearest side
+        const toMin = s.min[axis] - HALF_W, toMax = s.max[axis] + HALF_W;
+        p[axis] = amount > 0 ? toMin : amount < 0 ? toMax : (p[axis] - toMin < toMax - p[axis] ? toMin : toMax);
+      }
     }
   }
 }
@@ -1274,7 +1280,7 @@ function update(dt) {
     player.spin -= dt; if (player.spin <= 0) player.spinCd = SPIN_COOLDOWN;
     for (const c of crates.slice()) {
       if (c.broken) continue;
-      if (Math.abs(c.mesh.position.x - player.pos.x) < 2.3 && Math.abs(c.mesh.position.z - player.pos.z) < 2.3 &&
+      if (Math.hypot(c.mesh.position.x - player.pos.x, c.mesh.position.z - player.pos.z) < 2.5 &&
           c.mesh.position.y > player.pos.y - 0.6 && c.mesh.position.y < player.pos.y + PLAYER_H + 0.5) breakCrate(c, false);
     }
   }
@@ -1303,7 +1309,7 @@ function update(dt) {
   }
   // spikes
   for (const s of spikes) {
-    if (Math.abs(s.pos.x - player.pos.x) < 0.5 + HALF_W && Math.abs(s.pos.z - player.pos.z) < 0.5 + HALF_W &&
+    if (Math.hypot(s.pos.x - player.pos.x, s.pos.z - player.pos.z) < 0.85 &&
         player.pos.y < s.pos.y + 0.6 && player.pos.y + PLAYER_H > s.pos.y) hit();
   }
   if (boss.active) updateBoss(dt);

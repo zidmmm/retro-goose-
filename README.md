@@ -41,3 +41,6 @@ After Ripper Roo, a giant boulder chases you down a long track. You run toward t
 
 ## Final boss: Dr. Neo Cortex
 He hovers on a platform and fires ray-gun zaps at you (6 lives on the health bar). Green zaps just hurt, so dodge them. Every third zap is golden (his gun glows gold first): spin into a golden zap to knock it back at him. At half health he pulls a lever: four platforms rise out of the floor, then the floor (a trap door) drops away, so jump onto a platform before it opens. In stage two he fires faster, and platforms collapse one at a time, so keep moving.
+
+## Collision
+Crash's collision is a flat disc at his feet (like the original trilogy), not a box. Corners are round, so he slides around crates, walls and ledge corners instead of catching on them. He can still stand with his centre slightly past a platform edge.
