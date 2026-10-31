@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
+import { makeAnimator } from './animation.js';
 import { makeMaterials, tileUV, WUMPA_URL } from './textures.js';
 
 // ---------- tuning ----------
@@ -134,6 +135,7 @@ shadow.rotation.x = -Math.PI / 2; scene.add(shadow);
 function placeholder() {
   const m = new THREE.Mesh(new THREE.CapsuleGeometry(0.4, 0.9, 4, 10), mat(0xff7043)); m.position.y = PLAYER_H / 2; modelHolder.add(m);
 }
+let animator = null;
 const onModel = gltf => {
   const model = gltf.scene;
   model.updateMatrixWorld(true);
@@ -144,6 +146,7 @@ const onModel = gltf => {
   model.position.set(-c.x, -box.min.y, -c.z);
   wrap.rotation.y = MODEL_YAW;
   modelHolder.add(wrap);
+  animator = makeAnimator(model);
 };
 
 const loader = new GLTFLoader();
@@ -357,7 +360,8 @@ function frame() {
   const spinAngle = player.spin > 0 ? (1 - player.spin / SPIN_TIME) * Math.PI * 4 : 0;
   modelHolder.rotation.y = modelHolder.userData.yaw + spinAngle; // the model natively faces +Z
   const speed = Math.hypot(player.vel.x, player.vel.z);
-  modelHolder.position.y = player.grounded ? Math.abs(Math.sin(time * 14)) * 0.08 * Math.min(1, speed / SPEED) : 0;
+  modelHolder.position.y = 0;
+  animator?.update({ dt, time, speed: Math.min(1, speed / SPEED), grounded: player.grounded, vy: player.vel.y, spinning: player.spin > 0 });
   modelHolder.rotation.x = player.grounded ? -0.12 * Math.min(1, speed / SPEED) : -0.05;
   playerRoot.visible = player.hurt > 0 ? Math.floor(time * 20) % 2 === 0 : true;
   // blob shadow
@@ -378,5 +382,5 @@ function frame() {
   requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { player, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
