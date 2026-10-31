@@ -87,7 +87,7 @@ function platform(x, z0, z1, w, top = 0, material = M.grass) {
 function crate(x, y, z, kind = 'normal', fruitCount = 0) {
   const material = { checkpoint: M.checkpoint, aku: M.akuCrate, life: M.lifeCrate, tnt: M.tntCrate.clone() }[kind] || M.crate;
   const s = addBox(x, y + 0.5, z, 1, 1, 1, material, { crate: true });
-  s.kind = kind; s.fruitCount = kind === 'normal' ? Math.max(1, fruitCount) : fruitCount; crates.push(s);   // a normal crate always holds at least one Wumpa
+  s.kind = kind; s.fruitCount = kind === 'normal' ? 1 : fruitCount; crates.push(s);   // a normal crate holds exactly one Wumpa
   if (kind === 'tnt') s.armed = false;
 }
 function fruit(x, y, z) {
