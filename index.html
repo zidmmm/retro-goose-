@@ -23,11 +23,14 @@
   #bR{left:calc(env(safe-area-inset-left) + 192px);bottom:110px}
   #bJ{right:calc(env(safe-area-inset-right) + 30px);bottom:110px;width:118px;height:118px;font-size:22px!important}
   #bS{right:calc(env(safe-area-inset-right) + 165px);bottom:40px;width:100px;height:100px;font-size:20px!important}
+  #toast{position:fixed;top:26%;left:0;right:0;text-align:center;font-size:44px;font-weight:bold;color:#ffd54f;text-shadow:3px 3px 0 #7a2e00;opacity:0;transform:scale(.6);transition:opacity .15s,transform .15s;pointer-events:none}
+  #toast.show{opacity:1;transform:scale(1)}
   kbd{background:#333;border:1px solid #888;border-radius:4px;padding:1px 7px}
 </style>
 </head>
 <body>
 <div id="hud"><span id="lives"></span><span id="fruit"></span><span id="crates"></span><span id="aku" style="color:#ffd54f"></span></div>
+<div id="toast"></div>
 <div id="touch">
   <button id="bU" class="dp" data-key="ArrowUp">&#9650;</button><button id="bL" class="dp" data-key="ArrowLeft">&#9664;</button>
   <button id="bR" class="dp" data-key="ArrowRight">&#9654;</button><button id="bD" class="dp" data-key="ArrowDown">&#9660;</button>

@@ -161,13 +161,14 @@ loadGlb(window.__PLAYER_B64, './assets/player.glb', onModel, placeholder);
 
 // ---------- Aku Aku (floating mask companion) ----------
 const aku = new THREE.Group(); aku.visible = false; scene.add(aku);
-const akuMats = [];
+const akuMats = []; let aku2 = null;
 loadGlb(window.__AKU_B64, './assets/aku_aku.glb', gltf => {
   const model = gltf.scene, box = new THREE.Box3().setFromObject(model), size = box.getSize(new THREE.Vector3());
   const wrap = new THREE.Group(); wrap.add(model); wrap.scale.setScalar(1.9 / size.y);
   const c = box.getCenter(new THREE.Vector3()); model.position.sub(c);
   model.traverse(o => { if (o.isMesh) { o.frustumCulled = false; for (const mt of [].concat(o.material)) { akuMats.push(mt); mt.fog = false; } } });
   aku.add(wrap);
+  aku2 = aku.clone(true); scene.add(aku2); aku2.visible = false;
 }, () => {});
 
 // ---------- input ----------
@@ -233,11 +234,17 @@ function startOrRestart() {
 function respawn() {
   player.pos.copy(checkpoint); player.vel.set(0, 0, 0); player.spin = 0; player.hurt = 1;
 }
+const toastEl = document.getElementById('toast');
+let toastTimer;
+function toast(text) {
+  toastEl.textContent = text; toastEl.classList.add('show'); clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toastEl.classList.remove('show'), 1400);
+}
 function hit() {
   if (player.hurt > 0.5 || invincible > 0) return;
   if (masks <= 0) return die();
   masks--; player.hurt = 1; player.vel.y = JUMP_V * 0.6; player.grounded = false;
-  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud();
+  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud(); toast(masks > 0 ? 'AKU AKU PROTECTED YOU!' : 'MASK LOST!');
 }
 function die() {
   if (player.hurt > 0.5) return;
@@ -267,7 +274,7 @@ function breakCrate(c, bounce) {
   else beep(220, 0.15, 'square', 0.07, -80);
   if (c.kind === 'aku') {
     beep(520, 0.3, 'triangle', 0.08, 500);
-    if (++masks >= 3) { masks = 0; invincible = 12; }
+    if (++masks >= 3) { masks = 0; invincible = 12; toast('AKU AKU INVINCIBLE!'); } else toast(`AKU AKU MASK x${masks}!`);
   }
   addFruit(c.fruitCount || 0);
   if (bounce) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
@@ -414,13 +421,16 @@ function frame() {
   shadow.scale.setScalar(MODEL_SCALE * Math.max(0.4, 1 - (player.pos.y - sy) * 0.08));
 
   if (finish) { finish.rotation.z += dt; }
-  // Aku Aku hovers over the player's shoulder
-  aku.visible = masks > 0 || invincible > 0;
-  const akuTarget = tmp.set(player.pos.x - 1.4, player.pos.y + 2.5 + Math.sin(time * 2.4) * 0.15, player.pos.z + 0.4);
-  if (!aku.userData.init) { aku.position.copy(akuTarget); aku.userData.init = true; }
-  aku.position.lerp(akuTarget, 1 - Math.exp(-8 * dt));
-  aku.rotation.y = Math.sin(time * 1.5) * 0.35 + (player.vel.x * -0.02);
-  aku.scale.setScalar(1 + (invincible > 0 ? 0.15 + Math.sin(time * 12) * 0.05 : 0));
+  // Aku Aku masks hover on either side of the player (one per mask held; a single big glowing one while invincible)
+  [[aku, -1.4, masks > 0 || invincible > 0], [aku2, 1.4, masks > 1 && invincible <= 0]].forEach(([a, side, show], i) => {
+    if (!a) return;
+    a.visible = show;
+    const target = tmp.set(player.pos.x + side, player.pos.y + 2.5 + Math.sin(time * 2.4 + i * 2) * 0.15, player.pos.z + 0.4);
+    if (!a.userData.init) { a.position.copy(target); a.userData.init = true; }
+    a.position.lerp(target, 1 - Math.exp(-8 * dt));
+    a.rotation.y = Math.sin(time * 1.5 + i) * 0.35 - player.vel.x * 0.02;
+    a.scale.setScalar(1 + (invincible > 0 ? 0.15 + Math.sin(time * 12) * 0.05 : 0));
+  });
   for (const mt of akuMats) if (mt.emissive) mt.emissive.setHex(invincible > 0 ? (Math.floor(time * 8) % 2 ? 0x2a5577 : 0x665522) : 0x2a2a2a);
   // camera
   camTarget.set(player.pos.x * 0.5, Math.max(player.pos.y, -2) + 4.8, player.pos.z + 9.5);
