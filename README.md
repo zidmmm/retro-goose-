@@ -55,5 +55,8 @@ Crash's collision is a flat disc at his feet (like the original trilogy), not a 
 ## Game Over
 If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, the Dr. Neo Cortex fight, the temple, the fire chase, or the Uka Uka fight) with 3 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
 
+## Start sequence
+The game opens with "Retro Goose presents" (your hand-drawn logo), then the game logo and a PLAY button, then the world map with a START button; START teleports Crash to level 1. Tap the logo to skip the intro. Add `?nomap` or `?nointro` to skip it.
+
 ## World map
 After every stage a 3-D map of the island plays (World 2 is on a second, scorched island joined to the first): the camera flies over it, then follows Crash as he runs along the road from the stage you just beat to the next one (the trail turns gold behind him), and he jumps for joy when he arrives. Tap the screen or press Enter to skip it. Add `?nomap` to the page address to skip it automatically (handy for testing).

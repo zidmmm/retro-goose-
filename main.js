@@ -32,7 +32,7 @@ renderer.setPixelRatio(dpr);
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
 renderer.domElement.addEventListener('webglcontextlost', e => e.preventDefault());
-renderer.domElement.addEventListener('pointerdown', () => { if (state === 'map') startOrRestart(); });   // tap the screen to skip the world map   // lets the browser restore the context instead of leaving a black screen
+renderer.domElement.addEventListener('pointerdown', () => { if (state === 'map' && !mapSt.hold) startOrRestart(); });   // tap the screen to skip the world map   // lets the browser restore the context instead of leaving a black screen
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x4f7a52);
 scene.fog = new THREE.Fog(0x4f7a52, 22, 85);
@@ -648,12 +648,20 @@ function unlockAudio() {
 function startOrRestart() {
   unlockAudio();
   if (performance.now() < uiLockUntil) return;
-  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); setTimeout(checkSound, 900); }
+  if (state === 'title') {
+    msg.classList.add('hidden');
+    if (NO_MAP) { state = 'play'; updateHud(); music('level'); setTimeout(checkSound, 900); }
+    else fadeThen(() => enterMap(0, 0, 'WORLD MAP', beginGame, true), 500);   // title -> the world map -> START -> level 1
+  }
   else if (state === 'map') skipMap();                        // tap / Enter skips the world map
   else if (state === 'over') resetGame(retryStage);
   else if (state === 'won') resetGame('level1');
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
+function beginGame() {                        // from the map's START button: Crash is teleported to the first level
+  checkpoint.set(0, 0, 0); player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
+  updateHud(); music('level'); setTimeout(checkSound, 900);
+}
 function stageKey() { return uka.active ? 'uka' : chase2.active ? 'chase2' : temple.active ? 'temple1' : cortex.active ? 'cortex' : chase.active ? 'chase' : boss.active ? 'boss1' : 'level1'; }
 const STAGE_NAMES = { level1: 'level 1', boss1: 'the Ripper Roo fight', chase: 'level 2 (the boulder chase)', cortex: 'the Dr. Neo Cortex fight', temple1: 'level 3 (the temple)', chase2: 'level 4 (the fire chase)', uka: 'the Uka Uka fight' };
 let retryStage = 'level1';                   // the stage you got Game Over in: that is where you start again
@@ -1589,18 +1597,18 @@ function buildMap() {
 buildMap();
 
 const NO_MAP = new URLSearchParams(location.search).has('nomap');   // (testing aid: skip the world map)
-function enterMap(from, to, title, next) {
+function enterMap(from, to, title, next, hold = false) {
   if (NO_MAP) { next(); return; }   // called while the screen is black: set up the map and drop Crash at the stage he just finished
   const S = mapSt;
-  S.active = true; S.finishing = false; S.t = 0; S.from = from; S.to = to; S.title = title; S.next = next; S.s = S.idx[from];
+  S.active = true; S.finishing = false; S.hold = hold; S.t = 0; S.from = from; S.to = to; S.title = title; S.next = next; S.s = S.idx[from];
   S.saved = { fog: scene.fog, bg: scene.background, far: camera.far };
   scene.fog = new THREE.Fog(0x8fd3ff, 260, 1500); scene.background = new THREE.Color(0x8fd3ff); camera.far = 3000; camera.updateProjectionMatrix();   // pale haze toward the horizon
   mapRoot.visible = true; state = 'map'; S.labels.forEach(l => { l.visible = true; });
-  S.rings.forEach((r, i) => r.material.color.setHex(i <= from ? 0x44dd66 : i === to ? 0xffcc33 : 0x777777));   // beaten = green, next = gold, ahead = grey
+  S.rings.forEach((r, i) => r.material.color.setHex(hold ? (i === 0 ? 0xffcc33 : 0x777777) : i <= from ? 0x44dd66 : i === to ? 0xffcc33 : 0x777777));   // beaten = green, next = gold, ahead = grey
   S.dots.forEach(d => d.material.color.setHex(d.userData.k <= S.idx[from] ? 0xffd24a : 0xffffff));
   const q = S.path[S.idx[from]]; player.pos.set(MAP_X + q.x, mapH(q.x, q.z), q.z); player.vel.set(0, 0, 0); player.grounded = true; player.spin = 0; player.hurt = 0; player.facing = 0;
   S.dir.set(0, 0, 1); S.camInit = false; S.phase = '';
-  const b = document.getElementById('mapBanner'), hint = document.getElementById('mapHint'); b.textContent = title; b.hidden = false; hint.hidden = false;
+  const b = document.getElementById('mapBanner'), hint = document.getElementById('mapHint'); b.textContent = title; b.hidden = false; hint.hidden = hold; document.getElementById('mapStart').hidden = !hold;
   bossUI.bar.hidden = true; music('map');
 }
 function updateMap(dt) {
@@ -1609,7 +1617,7 @@ function updateMap(dt) {
   const banner = document.getElementById('mapBanner');
   for (const c of S.clouds) { c.position.x += dt * 1.2; if (c.position.x > 160) c.position.x = -160; }
   S.rings.forEach((r, i) => { r.rotation.z += dt; r.scale.setScalar(i === S.to ? 1 + Math.sin(S.t * 5) * 0.12 : 1); });
-  const phase = S.t < A ? 'overview' : S.t < A + run ? 'run' : 'arrive';
+  const phase = S.hold ? 'overview' : S.t < A ? 'overview' : S.t < A + run ? 'run' : 'arrive';
   if (phase !== S.phase) {                                                                         // the banner follows the phase, however the time got there
     S.phase = phase;
     if (phase === 'run') banner.textContent = 'NEXT: ' + MAP_NODES[S.to].name;
@@ -1635,7 +1643,8 @@ function updateMap(dt) {
 function mapCamera(dt) {                      // overview first, then a chase camera behind Crash, then a front view when he arrives
   const S = mapSt, A = 2.4, run = Math.max(1, (S.idx[S.to] - S.idx[S.from]) * S.spacing / 9), px = player.pos.x, py = player.pos.y, pz = player.pos.z;
   let want = tmp, look = hitPt;
-  if (S.t < A) { const a = -0.55 + S.t * 0.2, cx = S.from >= 3 ? (MAP_NODES[S.from].p[0] + MAP_NODES[S.to].p[0]) / 2 : 0; want.set(MAP_X + cx + Math.sin(a) * 100, 64, Math.cos(a) * 100 + 8); look.set(MAP_X + cx, 1, 0); }
+  if (S.hold) { const a = -0.5 + Math.sin(S.t * 0.25) * 0.35; want.set(MAP_X + 62 + Math.sin(a) * 150, 96, Math.cos(a) * 150 + 10); look.set(MAP_X + 62, 0, 0); }
+  else if (S.t < A) { const a = -0.55 + S.t * 0.2, cx = S.from >= 3 ? (MAP_NODES[S.from].p[0] + MAP_NODES[S.to].p[0]) / 2 : 0; want.set(MAP_X + cx + Math.sin(a) * 100, 64, Math.cos(a) * 100 + 8); look.set(MAP_X + cx, 1, 0); }
   else if (S.t < A + run) { want.set(px - S.dir.x * 15 - S.dir.z * 5, py + 11, pz - S.dir.z * 15 + S.dir.x * 5); look.set(px + S.dir.x * 7, py + 1.5, pz + S.dir.z * 7); }
   else { want.set(px + 4, py + 11, pz + 26); look.set(px, py + 2, pz); }
   if (!S.camInit) { camera.position.copy(want); S.camInit = true; } else camera.position.lerp(want, 1 - Math.exp(-3 * dt));
@@ -1646,12 +1655,25 @@ function finishMap() {                        // fade out, restore the game's lo
   fadeThen(() => {
     const S = mapSt;
     S.active = false; mapRoot.visible = false; scene.fog = S.saved.fog; scene.background = S.saved.bg; camera.far = S.saved.far; camera.updateProjectionMatrix();
-    document.getElementById('mapBanner').hidden = true; document.getElementById('mapHint').hidden = true;
+    document.getElementById('mapBanner').hidden = true; document.getElementById('mapHint').hidden = true; document.getElementById('mapStart').hidden = true;
     player.vel.set(0, 0, 0); player.spin = 0; player.grounded = false; camSnap = true;
     S.next();
   }, 900);
 }
 function skipMap() { if (mapSt.active) finishMap(); }
+document.getElementById('mapStart').addEventListener('click', () => { unlockAudio(); skipMap(); });
+// ---- intro: "Retro Goose presents" with the hand-drawn logo, then the title screen ----
+(() => {
+  const el = document.getElementById('intro'); if (!el) return;
+  const q = new URLSearchParams(location.search);
+  if (q.has('nomap') || q.has('nointro')) { el.remove(); return; }
+  let done = false;
+  const end = () => { if (done) return; done = true; el.classList.remove('on', 'show'); setTimeout(() => el.remove(), 800); };
+  requestAnimationFrame(() => el.classList.add('on'));
+  setTimeout(() => el.classList.add('show'), 500);
+  setTimeout(end, 4200);
+  el.addEventListener('pointerdown', end);
+})();
 
 // ---------- physics ----------
 const STEP_SMALL = 0.35;  // lips this low are stepped over automatically

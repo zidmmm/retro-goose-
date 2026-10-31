@@ -35,6 +35,15 @@
   #bosshp i.lost{background:#1d1d1d;border-color:#777;opacity:.65}
   #muteBtn{position:fixed;z-index:20;top:calc(8px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:rgba(20,30,40,.55);color:#fff;font-size:22px;line-height:1;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer}
   #mapBanner{position:fixed;top:11%;left:0;right:0;text-align:center;font-size:clamp(26px,5.5vw,54px);font-weight:bold;color:#ffe28a;text-shadow:3px 3px 0 #5a2a00,-2px -2px 0 #5a2a00;pointer-events:none;padding:0 16px;text-wrap:balance}
+  #intro{position:fixed;inset:0;z-index:50;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;opacity:0;transition:opacity .7s;cursor:pointer;touch-action:manipulation}
+  #intro.on{opacity:1}
+  #intro img{width:min(78vw,60vh,560px);height:auto;opacity:0;transition:opacity .9s}
+  #intro.show img{opacity:1}
+  #intro p{margin:14px 0 0;font:bold clamp(20px,4.4vw,38px) "Trebuchet MS",sans-serif;letter-spacing:.12em;color:#222;opacity:0;transition:opacity .8s}
+  #intro.show p{opacity:1}
+  #mapStart{position:fixed;bottom:9%;left:50%;transform:translateX(-50%);padding:14px 56px;font:bold 28px "Trebuchet MS",sans-serif;color:#2b1200;background:#ffb347;border:3px solid #7a2e00;border-radius:12px;box-shadow:0 5px 0 #7a2e00;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  #mapStart[hidden]{display:none}
+  #mapStart:active{transform:translateX(-50%) translateY(3px);box-shadow:0 2px 0 #7a2e00}
   #mapHint{position:fixed;bottom:5%;left:0;right:0;text-align:center;font-size:16px;letter-spacing:.14em;color:#fff;text-shadow:2px 2px 0 #000;pointer-events:none}
   #danger{position:fixed;inset:0;pointer-events:none;opacity:0;box-shadow:inset 0 0 110px 36px rgba(255,40,20,.85)}   /* red edges when the boulder is close */
   #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s}
@@ -48,6 +57,7 @@
 <div id="hud"><span id="lives"></span><span id="fruit"></span><span id="crates"></span><span id="aku" style="color:#ffd54f"></span></div>
 <div id="bossbar" hidden><div id="bossname">RIPPER ROO</div><div id="bosshp"></div></div>
 <div id="mapBanner" hidden></div>
+<button id="mapStart" type="button" hidden>START</button>
 <div id="mapHint" hidden>TAP OR PRESS ENTER TO SKIP</div>
 <div id="danger"></div>
 <div id="fade"></div>
@@ -58,6 +68,7 @@
   <button id="bR" class="dp" data-key="ArrowRight">&#9654;</button><button id="bD" class="dp" data-key="ArrowDown">&#9660;</button>
   <button id="bJ" data-key="Space">JUMP</button><button id="bS" data-action="spin">SPIN</button>
 </div>
+<div id="intro"><img src="./assets/retro_goose.jpg" alt="Retro Goose"><p>RETRO GOOSE PRESENTS</p></div>
 <div id="msg"><img id="logo" src="./assets/logo.png" alt="Crash Bandicoot Adventure"><h1 hidden></h1><div id="msgbody"></div><button id="startBtn" type="button">PLAY</button></div>
 <script type="importmap">{"imports":{"three":"./lib/three.module.js"}}</script>
 <script type="module" src="./main.js"></script>
