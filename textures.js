@@ -32,17 +32,6 @@ const metalTex = () => canvasTex(16, 16, (g, w, h) => {
   dot(g, 0, 0, '#16665d', w, 1); dot(g, 0, h - 1, '#16665d', w, 1); dot(g, 0, 0, '#16665d', 1, h); dot(g, w - 1, 0, '#16665d', 1, h);
   for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]) dot(g, x, y, '#c9f2ec', 1, 1);
 }, { clampT: true });
-const crateTex = (checkpoint) => canvasTex(32, 32, (g, w, h) => {
-  const base = checkpoint ? '#3949ab' : '#c98a3c', dark = checkpoint ? '#1a237e' : '#6b4210', mid = checkpoint ? '#2c3a8c' : '#a06a24';
-  speckle(g, w, h, base, [mid, checkpoint ? '#4a5bc4' : '#dda052'], 0.25);
-  for (let y = 7; y < h; y += 8) dot(g, 0, y, mid, w, 1);
-  for (let i = 0; i < w; i++) { dot(g, i, i, dark, 2, 2); dot(g, w - 2 - i, i, dark, 2, 2); }
-  dot(g, 0, 0, dark, w, 3); dot(g, 0, h - 3, dark, w, 3); dot(g, 0, 0, dark, 3, h); dot(g, w - 3, 0, dark, 3, h);
-  if (checkpoint) { // blocky yellow "C"
-    dot(g, 9, 9, '#1a237e', 14, 14);
-    dot(g, 10, 10, '#ffeb3b', 12, 3); dot(g, 10, 19, '#ffeb3b', 12, 3); dot(g, 10, 10, '#ffeb3b', 3, 12);
-  }
-}, { repeat: false });
 const waterTex = () => canvasTex(32, 32, (g, w, h) => {
   dot(g, 0, 0, '#1e6fc9', w, h);
   for (let i = 0; i < 40; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#4a9ae8' : '#1558a8', 3 + ((rnd() * 4) | 0), 1);
@@ -65,9 +54,10 @@ const enemyTex = () => canvasTex(24, 20, (g) => {
   for (const x of [5, 8, 15, 18]) dot(g, x, 17, '#5a1010', 1, 3);
 }, { repeat: false });
 
-const AKU_CRATE_URL = window.__AKUCRATE_B64 ? 'data:image/png;base64,' + window.__AKUCRATE_B64 : './assets/aku_crate.png';
-function akuCrateTex() {
-  const t = new THREE.TextureLoader().load(AKU_CRATE_URL);
+// pixel-art crate faces: assets/<name>.png, or embedded as base64 in window.__TEX_B64 for the single-file build
+function imgTex(name) {
+  const b64 = window.__TEX_B64 && window.__TEX_B64[name];
+  const t = new THREE.TextureLoader().load(b64 ? 'data:image/png;base64,' + b64 : `./assets/${name}.png`);
   t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
@@ -89,7 +79,8 @@ export function makeMaterials() {
     grass: [side, side, top, dirt, side, side],       // box face order: +x -x +y -y +z -z
     dirt: [dirt, dirt, dirt, dirt, dirt, dirt],
     moving: [metal, metal, metal, metal, metal, metal],
-    crate: lambert(crateTex(false)), akuCrate: lambert(akuCrateTex()), checkpoint: lambert(crateTex(true)),
+    crate: lambert(imgTex('crate')), lifeCrate: lambert(imgTex('crate_life')), tntCrate: lambert(imgTex('crate_tnt')),
+    akuCrate: lambert(imgTex('aku_crate')), checkpoint: lambert(imgTex('crate_checkpoint')),
     water, tree: sprite(treeTex()), enemy: sprite(enemyTex()), fruit: sprite(wumpaTex()),
   };
 }

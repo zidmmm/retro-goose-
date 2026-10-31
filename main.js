@@ -57,8 +57,10 @@ function platform(x, z0, z1, w, top = 0, material = M.grass) {
   return addBox(x, top - h / 2, (z0 + z1) / 2, w, h, d, material);
 }
 function crate(x, y, z, kind = 'normal', fruitCount = 0) {
-  const s = addBox(x, y + 0.5, z, 1, 1, 1, kind === 'checkpoint' ? M.checkpoint : kind === 'aku' ? M.akuCrate : M.crate, { crate: true });
-  s.kind = kind; s.fruitCount = fruitCount; crates.push(s);
+  const material = { checkpoint: M.checkpoint, aku: M.akuCrate, life: M.lifeCrate, tnt: M.tntCrate.clone() }[kind] || M.crate;
+  const s = addBox(x, y + 0.5, z, 1, 1, 1, material, { crate: true });
+  s.kind = kind; s.fruitCount = kind === 'normal' ? Math.max(1, fruitCount) : fruitCount; crates.push(s);   // a normal crate always holds at least one Wumpa
+  if (kind === 'tnt') s.armed = false;
 }
 function fruit(x, y, z) {
   const m = new THREE.Sprite(M.fruit); m.scale.set(0.95, 0.85, 1);
@@ -89,6 +91,7 @@ function buildLevel() {
   // 2. first gap + patrol platform
   platform(0, -25, -42, 7);
   enemy(0, 0, -31, 'x', 2.5); enemy(0, 0, -37, 'x', 2.5);
+  crate(-2.5, 0, -27, 'tnt'); crate(2.5, 0, -40, 'life');
   fruit(0, 3.2, -23.5); fruitLine(2, 0.9, -28, -40, 4);
   // 3. narrow bridge with spikes + checkpoint
   platform(0, -45, -64, 2.6, 0, M.dirt);
@@ -141,6 +144,8 @@ function buildLevel() {
   const rr = (a, b) => a + rng() * (b - a);
   let sectionNo = 0;
   const maybeCheckpoint = z => { if (sectionNo % 4 === 0) crate(0, 0, z, 'checkpoint'); };
+  const maybeLife = (x, y, z, p = 0.3) => { if (rng() < p) crate(x, y, z, 'life'); };
+  const maybeTnt = (x, z, p = 0.5) => { if (rng() < p) crate(x, 0, z, 'tnt'); };
   const maybeAku = (y, z, p = 0.55) => { if (rng() < p) crate(0, y, z, 'aku'); };
   const T = {
     arena(z0) {                                      // wide platform, wave of patrolling enemies, crates
@@ -150,6 +155,7 @@ function buildLevel() {
       const n = 3 + (sectionNo > 8 ? 1 : 0);
       for (let i = 0; i < n; i++) enemy(0, 0, z0 - 8 - i * ((len - 12) / n), 'x', 3.5);
       crate(-3, 0, z0 - len + 4, 'normal', 5); crate(3, 0, z0 - len + 4, 'normal', 5);
+      maybeTnt(rng() < 0.5 ? -2.5 : 2.5, z0 - 15); maybeLife(0, 0, z0 - len + 2);
       fruitLine(0, 0.9, z0 - 3, z0 - len + 2, 7);
       return z0 - len;
     },
@@ -174,7 +180,7 @@ function buildLevel() {
       addBox(0, 0.6, z0 - 4.5, 8, 1.2, 3, M.step);
       addBox(0, 1.2, z0 - 13, 8, 2.4, 14, M.step);
       maybeCheckpoint(z0 - 1.5); maybeAku(2.4, z0 - 9);
-      crate(-2.5, 2.4, z0 - 11, 'normal', 6); crate(2.5, 2.4, z0 - 11, 'normal', 6);
+      crate(-2.5, 2.4, z0 - 11, 'normal', 6); crate(2.5, 2.4, z0 - 11, 'normal', 6); maybeLife(0, 2.4, z0 - 12.5);
       enemy(0, 2.4, z0 - 10, 'x', 3); enemy(0, 2.4, z0 - 14, 'x', 3);
       spike(-2.2, 2.4, z0 - 17); spike(2.2, 2.4, z0 - 17);
       fruitLine(0, 3.4, z0 - 8, z0 - 18, 5);
@@ -194,7 +200,7 @@ function buildLevel() {
       maybeCheckpoint(z0 - 1.5);
       for (const [d, xs] of [[7, [-3, -1]], [13, [1, 3]], [19, [-3, -1]]]) for (const x of xs) spike(x, 0, z0 - d);
       enemy(0, 0, z0 - 10, 'x', 3); enemy(0, 0, z0 - 16, 'x', 3);
-      crate(-3.2, 0, z0 - 4, 'normal', 4); crate(3.2, 0, z0 - 4, 'normal', 4); maybeAku(0, z0 - 22, 0.4);
+      crate(-3.2, 0, z0 - 4, 'normal', 4); crate(3.2, 0, z0 - 4, 'normal', 4); maybeAku(0, z0 - 22, 0.4); maybeTnt(3.5, z0 - 23, 0.4);
       fruitLine(0, 0.9, z0 - 3, z0 - 24, 8);
       return z0 - len;
     },
@@ -371,13 +377,54 @@ function spawnDebris(pos) {
     scene.add(d); debris.push(d);
   }
 }
+// Wumpa that pop out of a smashed crate (the count itself is credited immediately)
+const pops = [];
+function popFruit(pos, n) {
+  for (let i = 0; i < Math.min(n, 5); i++) {
+    const s = new THREE.Sprite(M.fruit); s.scale.set(0.8, 0.72, 1); s.position.copy(pos);
+    s.userData = { v: new THREE.Vector3((Math.random() - 0.5) * 2.5, 5 + Math.random() * 2, (Math.random() - 0.5) * 2.5), life: 0.7 };
+    scene.add(s); pops.push(s);
+  }
+}
+const countdownTex = [1, 2, 3].map(n => {
+  const c = document.createElement('canvas'); c.width = c.height = 64; const g = c.getContext('2d');
+  g.font = 'bold 56px "Trebuchet MS", sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.lineWidth = 8; g.strokeStyle = '#7a1000'; g.strokeText(n, 32, 34); g.fillStyle = '#ffeb3b'; g.fillText(n, 32, 34);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+});
+const booms = [];
+function armTnt(c, fromStomp) {
+  if (c.broken) return;
+  if (fromStomp) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
+  if (c.armed) { if (!fromStomp) c.timer = Math.min(c.timer, 0.15); return; }   // spinning an armed crate sets it off at once
+  c.armed = true; c.timer = fromStomp ? 3 : 0.15; beep(900, 0.08, 'square', 0.06);
+  c.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: countdownTex[2], transparent: true, depthTest: false }));
+  c.label.scale.set(1.1, 1.1, 1); c.label.position.copy(c.mesh.position).add(new THREE.Vector3(0, 1.4, 0)); scene.add(c.label);
+}
+function explodeTnt(c) {
+  if (c.broken) return;
+  const p = c.mesh.position.clone();
+  c.broken = true; c.mesh.visible = false; cratesBroken++; scene.remove(c.label);
+  const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
+  spawnDebris(p); spawnDebris(p);
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
+  ball.position.copy(p); ball.userData = { life: 0.5 }; scene.add(ball); booms.push(ball);
+  beep(120, 0.5, 'sawtooth', 0.12, -80);
+  const R = 3.3;
+  if (Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < R && Math.abs(player.pos.y + 0.9 - p.y) < 2.5) hit();
+  for (const e of enemies) if (e.alive && e.mesh.position.distanceTo(p) < R + 0.5) { e.alive = false; e.mesh.visible = false; }
+  for (const o of crates.slice()) if (!o.broken && o !== c && o.mesh.position.distanceTo(p) < R) { if (o.kind === 'tnt') { armTnt(o, false); } else breakCrate(o, false); }
+  updateHud();
+}
 function breakCrate(c, bounce) {
   if (c.broken) return;
+  if (c.kind === 'tnt') return armTnt(c, bounce);
   spawnDebris(c.mesh.position);
   c.broken = true; c.mesh.visible = false; cratesBroken++;
   const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
-  if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); }
+  if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); toast('CHECKPOINT!'); }
   else beep(220, 0.15, 'square', 0.07, -80);
+  if (c.kind === 'life') { lives++; beep(900, 0.35, 'triangle', 0.09, 700); toast('1UP!'); }
   if (c.kind === 'aku') {
     beep(520, 0.3, 'triangle', 0.08, 500);
     if (invincible > 0) invincible = INVINCIBLE_TIME;
@@ -385,6 +432,7 @@ function breakCrate(c, bounce) {
     else if (masks === 1) { masks = 2; toast('AKU AKU POWER UP!'); }
     else { masks = 0; invincible = INVINCIBLE_TIME; toast('GOLDEN AKU AKU! INVINCIBLE!'); }
   }
+  popFruit(c.mesh.position, c.fruitCount || 0);
   addFruit(c.fruitCount || 0);
   if (bounce) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
   updateHud();
@@ -421,6 +469,20 @@ function update(dt) {
     const m = s.mover, old = s.mesh.position[m.axis];
     s.mesh.position[m.axis] = m.origin + Math.sin(time * m.speed) * m.range;
     s.delta = s.mesh.position[m.axis] - old; syncBox(s);
+  }
+  for (const c of crates) if (c.armed && !c.broken) {
+    c.timer -= dt;
+    c.label.material.map = countdownTex[Math.max(0, Math.min(2, Math.ceil(c.timer) - 1))];
+    c.mesh.material.emissive.setHex(Math.floor(c.timer * 6) % 2 ? 0xaa1100 : 0x000000);
+    if (c.timer <= 0) explodeTnt(c);
+  }
+  for (let i = booms.length - 1; i >= 0; i--) {
+    const b = booms[i]; b.userData.life -= dt; b.scale.setScalar(1 + (0.5 - b.userData.life) * 7); b.material.opacity = Math.max(0, b.userData.life * 1.7);
+    if (b.userData.life <= 0) { scene.remove(b); booms.splice(i, 1); }
+  }
+  for (let i = pops.length - 1; i >= 0; i--) {
+    const s = pops[i], u = s.userData; u.life -= dt; u.v.y -= 14 * dt; s.position.addScaledVector(u.v, dt);
+    if (u.life <= 0) { scene.remove(s); pops.splice(i, 1); }
   }
   for (let i = debris.length - 1; i >= 0; i--) {
     const d = debris[i], u = d.userData;

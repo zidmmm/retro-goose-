@@ -12,9 +12,10 @@ b=open('dist/bundle.js').read().replace('</script','<\\/script')
 g=base64.b64encode(open('assets/player.glb','rb').read()).decode()
 w=base64.b64encode(open('assets/wumpa.png','rb').read()).decode()
 k=base64.b64encode(open('assets/aku_aku.glb','rb').read()).decode()
-ac=base64.b64encode(open('assets/aku_crate.png','rb').read()).decode()
+import json
+tex=json.dumps({n:base64.b64encode(open(f'assets/{n}.png','rb').read()).decode() for n in ['crate','crate_life','crate_checkpoint','crate_tnt','aku_crate']})
 h=h.replace('<script type="module" src="./main.js"></script>',
- '<script>window.__PLAYER_B64="'+g+'";window.__WUMPA_B64="'+w+'";window.__AKU_B64="'+k+'";window.__AKUCRATE_B64="'+ac+'"</script>\n<script>'+b+'</script>')
+ '<script>window.__PLAYER_B64="'+g+'";window.__WUMPA_B64="'+w+'";window.__AKU_B64="'+k+'";window.__TEX_B64='+tex+'</script>\n<script>'+b+'</script>')
 open('dist/game.html','w').write(h)
 # fragment (no doctype/html/head/body) for hosts that supply their own page skeleton
 style=re.search(r'<style>.*?</style>',h,re.S).group(0)

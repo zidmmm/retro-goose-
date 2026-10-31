@@ -22,3 +22,8 @@ Stomp crates and enemies, collect fruit (100 = extra life), hit checkpoint crate
 - You start without him. Break an Aku Aku crate (the one with his face) to summon him: he blocks hits.
 - A second crate powers him up (silver glow, blocks two hits).
 - A third crate turns him gold: you are invincible for 15 seconds, except for falling into the water.
+
+## Crates
+- Plain crate: always drops at least 1 Wumpa when smashed.
+- Crash crate: extra life. C crate: checkpoint. Aku Aku crate: Aku Aku / power-ups.
+- TNT: jump on it (3 second countdown) or spin it (goes off almost at once). The blast hurts you, enemies and nearby crates.
