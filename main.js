@@ -38,6 +38,7 @@ const M = { ...T, spike: mat(0xcfd8dc), step: T.grass, portal: new THREE.MeshBas
 const solids = [];   // { mesh, min:Vector3, max:Vector3, vel?, crate? }
 const crates = [], fruits = [], enemies = [], spikes = [], movers = [];
 let finish;
+const LAYOUT = [];   // [kind, startZ, endZ] per generated section, handy for debugging
 
 function addBox(x, y, z, w, h, d, material, extra = {}) {
   const geo = new THREE.BoxGeometry(w, h, d);
@@ -205,7 +206,9 @@ function buildLevel() {
     let kind; do { kind = order[(rng() * order.length) | 0]; } while (kind === prev || (kind === 'ride' && prev === 'plateau'));
     prev = kind;
     // every section starts 3 past the previous platform's end; 'ride' uses that gap for its moving platform
+    const startZ = z;
     z = T[kind](z) - 3;
+    LAYOUT.push([kind, Math.round(startZ), Math.round(z + 3)]);
   }
   // finale
   platform(0, z, LEVEL_END, 8);
@@ -550,5 +553,5 @@ function frame() {
   requestAnimationFrame(frame);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();
