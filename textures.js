@@ -43,14 +43,6 @@ const crateTex = (checkpoint) => canvasTex(32, 32, (g, w, h) => {
     dot(g, 10, 10, '#ffeb3b', 12, 3); dot(g, 10, 19, '#ffeb3b', 12, 3); dot(g, 10, 10, '#ffeb3b', 3, 12);
   }
 }, { repeat: false });
-const akuCrateTex = () => canvasTex(32, 32, (g, w, h) => {
-  speckle(g, w, h, '#c98a3c', ['#a06a24', '#dda052'], 0.25);
-  for (let y = 7; y < h; y += 8) dot(g, 0, y, '#a06a24', w, 1);
-  dot(g, 0, 0, '#6b4210', w, 3); dot(g, 0, h - 3, '#6b4210', w, 3); dot(g, 0, 0, '#6b4210', 3, h); dot(g, w - 3, 0, '#6b4210', 3, h);
-  dot(g, 8, 6, '#6b4210', 16, 20); dot(g, 9, 7, '#e8a33a', 14, 18);   // mask
-  dot(g, 9, 7, '#d4382c', 14, 3); dot(g, 11, 12, '#1b1b1b', 3, 3); dot(g, 18, 12, '#1b1b1b', 3, 3); // brow + eyes
-  dot(g, 14, 17, '#1b1b1b', 4, 5); dot(g, 15, 18, '#ffffff', 2, 1);                             // mouth
-}, { repeat: false });
 const waterTex = () => canvasTex(32, 32, (g, w, h) => {
   dot(g, 0, 0, '#1e6fc9', w, h);
   for (let i = 0; i < 40; i++) dot(g, (rnd() * 28) | 0, (rnd() * 32) | 0, rnd() < 0.5 ? '#4a9ae8' : '#1558a8', 3 + ((rnd() * 4) | 0), 1);
@@ -72,6 +64,13 @@ const enemyTex = () => canvasTex(24, 20, (g) => {
   for (const x of [8, 15]) { dot(g, x, 3, '#ffffff', 3, 3); dot(g, x + 1, 4, '#000000', 1, 2); }
   for (const x of [5, 8, 15, 18]) dot(g, x, 17, '#5a1010', 1, 3);
 }, { repeat: false });
+
+const AKU_CRATE_URL = window.__AKUCRATE_B64 ? 'data:image/png;base64,' + window.__AKUCRATE_B64 : './assets/aku_crate.png';
+function akuCrateTex() {
+  const t = new THREE.TextureLoader().load(AKU_CRATE_URL);
+  t.magFilter = THREE.NearestFilter; t.minFilter = THREE.NearestFilter; t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 
 export const WUMPA_URL = window.__WUMPA_B64 ? 'data:image/png;base64,' + window.__WUMPA_B64 : './assets/wumpa.png';
 function wumpaTex() {

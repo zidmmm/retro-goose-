@@ -250,8 +250,17 @@ function trySpin() {
   if (state !== 'play' || player.spin > 0 || player.spinCd > 0) return;
   player.spin = SPIN_TIME; beep(500, 0.15, 'sawtooth', 0.04, 300);
 }
+const debris = [], debrisGeo = new THREE.BoxGeometry(0.22, 0.22, 0.22), debrisMats = [mat(0xc98a3c), mat(0x6b4210), mat(0xa06a24)];
+function spawnDebris(pos) {
+  for (let i = 0; i < 10; i++) {
+    const d = new THREE.Mesh(debrisGeo, debrisMats[i % 3]); d.position.copy(pos);
+    d.userData = { v: new THREE.Vector3((Math.random() - 0.5) * 6, 3 + Math.random() * 4, (Math.random() - 0.5) * 6), life: 0.9 };
+    scene.add(d); debris.push(d);
+  }
+}
 function breakCrate(c, bounce) {
   if (c.broken) return;
+  spawnDebris(c.mesh.position);
   c.broken = true; c.mesh.visible = false; cratesBroken++;
   const i = solids.indexOf(c); if (i >= 0) solids.splice(i, 1);
   if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); }
@@ -296,6 +305,11 @@ function update(dt) {
     const m = s.mover, old = s.mesh.position[m.axis];
     s.mesh.position[m.axis] = m.origin + Math.sin(time * m.speed) * m.range;
     s.delta = s.mesh.position[m.axis] - old; syncBox(s);
+  }
+  for (let i = debris.length - 1; i >= 0; i--) {
+    const d = debris[i], u = d.userData;
+    u.life -= dt; u.v.y -= 20 * dt; d.position.addScaledVector(u.v, dt); d.rotation.x += dt * 8; d.rotation.z += dt * 6;
+    if (u.life <= 0) { scene.remove(d); debris.splice(i, 1); }
   }
   if (state !== 'play') return;
 
