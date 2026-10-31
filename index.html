@@ -8,13 +8,14 @@
   html,body{margin:0;height:100%;overflow:hidden;background:#101820;font-family:"Trebuchet MS",sans-serif;color:#fff}
   canvas{display:block}
   #hud{position:fixed;top:12px;left:16px;right:16px;display:flex;gap:24px;font-size:22px;font-weight:bold;text-shadow:2px 2px 0 #000;pointer-events:none}
-  #msg{position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.55);text-align:center;font-size:20px;line-height:1.6}
+  #msg{overflow-y:auto;-webkit-overflow-scrolling:touch;box-sizing:border-box;padding:12px 0;position:fixed;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(0,0,0,.55);text-align:center;font-size:20px;line-height:1.6}
   #msg h1{font-size:clamp(30px,6vw,56px);margin:0 0 12px;padding:0 16px;text-wrap:balance;color:#ffb347;text-shadow:4px 4px 0 #7a2e00}
+  #msg::before,#msg::after{content:'';flex:1 0 0}   /* centres the content when it fits, and lets it scroll from the top when it doesn't */
   #msg.hidden{display:none}
-  #msgbody{max-width:760px;padding:0 20px}
-  #startBtn{margin-top:18px;padding:14px 44px;font:bold 26px "Trebuchet MS",sans-serif;color:#2b1200;background:#ffb347;border:3px solid #7a2e00;border-radius:12px;box-shadow:0 5px 0 #7a2e00;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+  #msgbody{max-width:760px;padding:0 20px;font-size:clamp(14px,2.6vh,20px);line-height:1.5}
+  #startBtn{flex:0 0 auto;margin:18px 0 6px;padding:14px 44px;font:bold 26px "Trebuchet MS",sans-serif;color:#2b1200;background:#ffb347;border:3px solid #7a2e00;border-radius:12px;box-shadow:0 5px 0 #7a2e00;cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
   #startBtn:active{transform:translateY(3px);box-shadow:0 2px 0 #7a2e00}
-  #logo{width:min(80vw,520px);max-height:42vh;object-fit:contain;margin-bottom:8px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6))}
+  #logo{width:min(80vw,520px);max-height:min(42vh,300px);flex:0 0 auto;object-fit:contain;margin-bottom:8px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.6))}
   html,body{touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
   #touch{position:fixed;inset:auto 0 0 0;height:0;display:none;pointer-events:none}
   body.touch #touch{display:block}
@@ -32,6 +33,7 @@
   #bosshp{display:flex;gap:6px;justify-content:center}
   #bosshp i{display:block;width:clamp(26px,6vw,44px);height:18px;background:linear-gradient(#ff7a6b,#c62828);border:3px solid #fff;border-radius:3px;transition:background .25s,opacity .25s}
   #bosshp i.lost{background:#1d1d1d;border-color:#777;opacity:.65}
+  #muteBtn{position:fixed;z-index:20;top:calc(8px + env(safe-area-inset-top));right:calc(12px + env(safe-area-inset-right));width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.75);background:rgba(20,30,40,.55);color:#fff;font-size:22px;line-height:1;padding:0;touch-action:manipulation;-webkit-tap-highlight-color:transparent;cursor:pointer}
   #fade{position:fixed;inset:0;background:#000;opacity:0;pointer-events:none;transition:opacity .6s}
   #fade.on{opacity:1}
   #toast{position:fixed;top:26%;left:0;right:0;text-align:center;font-size:44px;font-weight:bold;color:#ffd54f;text-shadow:3px 3px 0 #7a2e00;opacity:0;transform:scale(.6);transition:opacity .15s,transform .15s;pointer-events:none}
@@ -43,6 +45,7 @@
 <div id="hud"><span id="lives"></span><span id="fruit"></span><span id="crates"></span><span id="aku" style="color:#ffd54f"></span></div>
 <div id="bossbar" hidden><div id="bossname">RIPPER ROO</div><div id="bosshp"></div></div>
 <div id="fade"></div>
+<button id="muteBtn" type="button" aria-label="Sound on or off">&#128266;</button>
 <div id="toast"></div>
 <div id="touch">
   <button id="bU" class="dp" data-key="ArrowUp">&#9650;</button><button id="bL" class="dp" data-key="ArrowLeft">&#9664;</button>

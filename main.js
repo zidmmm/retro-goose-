@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { GLTFLoader } from './lib/loaders/GLTFLoader.js';
 import { makeAnimator } from './animation.js';
+import { sfx, music, unlock as unlockEngine, blip, isMuted, setMuted, status as audioStatus } from './audio.js';
 import { makeMaterials, tileUV, WUMPA_URL } from './textures.js';
 
 // ---------- tuning ----------
@@ -360,6 +361,7 @@ const keys = {};
 addEventListener('keydown', e => {
   unlockAudio();
   if (e.repeat) return;
+  if (e.code === 'KeyM') toggleSound();
   keys[e.code] = true;
   if (['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault();
   if (e.code === 'Space' || e.code === 'KeyK') player.jumpBuf = JUMP_BUFFER;
@@ -404,16 +406,7 @@ document.addEventListener('visibilitychange', () => { if (document.hidden) relea
 addEventListener('keyup', e => { keys[e.code] = false; });
 
 // ---------- sound ----------
-let ac;
-function beep(f, d = 0.1, type = 'square', vol = 0.06, slide = 0) {
-  try {
-    ac ||= new AudioContext(); if (ac.state === 'suspended') ac.resume();
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = type; o.frequency.value = f; if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, f + slide), ac.currentTime + d);
-    g.gain.value = vol; g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + d);
-    o.connect(g).connect(ac.destination); o.start(); o.stop(ac.currentTime + d);
-  } catch {}
-}
+const beep = blip;   // small one-off blips go through the shared audio engine too
 
 // ---------- game state ----------
 let masks = 0, invincible = 0; // masks = Aku Aku power level 0..2 (hits he can absorb); invincible = seconds of golden Aku Aku
@@ -438,13 +431,17 @@ function showMsg(title, body, label = 'PLAY') {
 }
 showMsg(GAME_TITLE, `<kbd>WASD</kbd>/<kbd>Arrows</kbd> move &nbsp; <kbd>Space</kbd> jump &nbsp; <kbd>Shift</kbd>/<kbd>J</kbd> spin<br>Spin or stomp crates and enemies, collect fruit, reach the portal.<br><br>Break an Aku Aku crate to summon Aku Aku, who blocks hits. Break two more to turn him golden and become invincible (but you can still fall).<br>Reach the portal to face <b>Ripper Roo</b>: dodge his rocks, and spin into the big one to knock it back at him.<br><br>Press <kbd>Enter</kbd> or tap to start<br>On iPad: use the on-screen arrows, JUMP and SPIN buttons<br><small>Aku Aku model by anttipantti, Ripper Roo model by Mechatorrs (CC BY 4.0)</small>`);
 let uiLockUntil = 0;   // ignore taps for a moment after Game Over / Level Complete so a mashed button can't restart instantly
+const muteBtn = document.getElementById('muteBtn');
+function toggleSound() { unlockEngine(); setMuted(!isMuted()); muteBtn.textContent = isMuted() ? '\uD83D\uDD07' : '\uD83D\uDD0A'; }
+muteBtn.textContent = isMuted() ? '\uD83D\uDD07' : '\uD83D\uDD0A';
+muteBtn.addEventListener('click', toggleSound);
 function unlockAudio() {
-  try { ac ||= new AudioContext(); if (ac.state === 'suspended') ac.resume(); } catch {}   // iPad Safari keeps audio suspended until a tap
+  unlockEngine();   // iPad Safari keeps audio suspended until a tap
 }
 function startOrRestart() {
   unlockAudio();
   if (performance.now() < uiLockUntil) return;
-  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); }
+  if (state === 'title') { state = 'play'; msg.classList.add('hidden'); updateHud(); music('level'); }
   else if (state === 'over' || state === 'won') resetGame();
 }
 // full in-place reset (no page reload): everything goes back to how it was at the start
@@ -461,7 +458,7 @@ function resetGame() {
   for (const e of enemies) { e.alive = true; e.mesh.visible = true; e.t = Math.random() * 6; }
   for (const list of [debris, pops, booms]) { for (const o of list) scene.remove(o); list.length = 0; }
   player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
-  state = 'play'; msg.classList.add('hidden'); updateHud();
+  state = 'play'; msg.classList.add('hidden'); updateHud(); music('level');
 }
 let camSnap = true;   // jump the camera straight to the player (respawn / restart) instead of gliding across the level
 function respawn() {
@@ -480,19 +477,19 @@ function hit() {
   if (player.hurt > 0.5 || invincible > 0) return;
   if (masks <= 0) return die();
   masks--; player.hurt = 1; player.vel.y = JUMP_V * 0.6; player.grounded = false;
-  beep(260, 0.25, 'sawtooth', 0.07, -120); updateHud(); toast(masks > 0 ? 'AKU AKU PROTECTED YOU!' : 'AKU AKU IS GONE!');
+  sfx('hurt'); updateHud(); toast(masks > 0 ? 'AKU AKU PROTECTED YOU!' : 'AKU AKU IS GONE!');
 }
 function die() {
   if (player.hurt > 0.5) return;
   masks = 0; invincible = 0;
-  lives--; beep(300, 0.4, 'sawtooth', 0.08, -200); updateHud();
-  if (lives <= 0) { state = 'over'; uiLockUntil = performance.now() + 900; showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> or tap the button to retry`, 'TRY AGAIN'); return; }
+  lives--; sfx('die'); updateHud();
+  if (lives <= 0) { state = 'over'; uiLockUntil = performance.now() + 900; music(null); sfx('gameover'); showMsg('GAME OVER', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates}<br>Press <kbd>Enter</kbd> or tap the button to retry`, 'TRY AGAIN'); return; }
   respawn();
 }
-function addFruit(n) { fruitCount += n; while (fruitCount >= 100) { fruitCount -= 100; lives++; beep(900, 0.3, 'triangle', 0.08, 600); } updateHud(); }
+function addFruit(n) { fruitCount += n; while (fruitCount >= 100) { fruitCount -= 100; lives++; sfx('oneup'); } updateHud(); }
 function trySpin() {
   if (state !== 'play' || player.spin > 0 || player.spinCd > 0) return;
-  player.spin = SPIN_TIME; beep(500, 0.15, 'sawtooth', 0.04, 300);
+  player.spin = SPIN_TIME; sfx('spin');
 }
 const debris = [], debrisGeo = new THREE.BoxGeometry(0.22, 0.22, 0.22), debrisMats = [mat(0xc98a3c), mat(0x6b4210), mat(0xa06a24)];
 function spawnDebris(pos) {
@@ -522,7 +519,7 @@ function armTnt(c, fromStomp) {
   if (c.broken) return;
   if (fromStomp) { player.vel.y = JUMP_V * 0.8; player.grounded = false; }
   if (c.armed) { if (!fromStomp) c.timer = Math.min(c.timer, 0.15); return; }   // spinning an armed crate sets it off at once
-  c.armed = true; c.timer = fromStomp ? 3 : 0.15; beep(900, 0.08, 'square', 0.06);
+  c.armed = true; c.timer = fromStomp ? 3 : 0.15; c.tick = 99; sfx('tick');
   c.label = new THREE.Sprite(new THREE.SpriteMaterial({ map: countdownTex[2], transparent: true, depthTest: false }));
   c.label.scale.set(1.1, 1.1, 1); c.label.position.copy(c.mesh.position).add(new THREE.Vector3(0, 1.4, 0)); scene.add(c.label);
 }
@@ -533,7 +530,7 @@ function explodeTnt(c) {
   spawnDebris(p); spawnDebris(p);
   const ball = new THREE.Mesh(new THREE.SphereGeometry(1, 14, 10), new THREE.MeshBasicMaterial({ color: 0xff8a00, transparent: true, opacity: 0.85 }));
   ball.position.copy(p); ball.userData = { life: 0.5 }; scene.add(ball); booms.push(ball);
-  beep(120, 0.5, 'sawtooth', 0.12, -80);
+  sfx('boom');
   const R = 3.3;
   if (Math.hypot(player.pos.x - p.x, player.pos.z - p.z) < R && Math.abs(player.pos.y + 0.9 - p.y) < 2.5) hit();
   for (const e of enemies) if (e.alive && e.mesh.position.distanceTo(p) < R + 0.5) { e.alive = false; e.mesh.visible = false; }
@@ -545,11 +542,11 @@ function breakCrate(c, bounce) {
   if (c.kind === 'tnt') return armTnt(c, bounce);
   spawnDebris(c.mesh.position);
   c.broken = true; c.mesh.visible = false; cratesBroken++; removeQueue.push(c);
-  if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); beep(700, 0.25, 'triangle', 0.07, 300); toast('CHECKPOINT!'); }
-  else beep(220, 0.15, 'square', 0.07, -80);
-  if (c.kind === 'life') { lives++; beep(900, 0.35, 'triangle', 0.09, 700); toast('1UP!'); }
+  if (c.kind === 'checkpoint') { checkpoint.set(c.mesh.position.x, c.mesh.position.y - 0.5, c.mesh.position.z); sfx('checkpoint'); toast('CHECKPOINT!'); }
+  else sfx('crate');
+  if (c.kind === 'life') { lives++; sfx('oneup'); toast('1UP!'); }
   if (c.kind === 'aku') {
-    beep(520, 0.3, 'triangle', 0.08, 500);
+    sfx('aku');
     if (invincible > 0) invincible = INVINCIBLE_TIME;
     else if (masks === 0) { masks = 1; toast('AKU AKU IS WITH YOU!'); }
     else if (masks === 1) { masks = 2; toast('AKU AKU POWER UP!'); }
@@ -655,14 +652,14 @@ function spawnBoom(p, size = 1) {
 }
 function startBoss() {                       // reached the portal: fade out, drop into the arena
   state = 'transition'; uiLockUntil = performance.now() + 900;
-  toast('LEVEL COMPLETE!'); beep(600, 0.6, 'triangle', 0.08, 600);
+  toast('LEVEL COMPLETE!'); sfx('portal'); music(null);
   bossUI.fade.classList.add('on');
   setTimeout(() => {
     clearRocks(); Object.assign(boss, { active: true, hp: BOSS_HP, intro: 3.5, stun: 0, dead: 0, t: 0, act: null, idleT: 0.6, want: null, flash: 0, smallT: 1.5, bigT: 8 });
     boss.root.position.set(0, 0, ARENA.z - ARENA.d + 3); boss.root.visible = true; boss.root.scale.setScalar(1);
     checkpoint.set(0, 0, ARENA.z - 3); player.pos.set(0, 0, ARENA.z - 3); respawn(); player.hurt = 0;
     bossUI.bar.hidden = false; updateBossBar();
-    state = 'play'; bossUI.fade.classList.remove('on'); toast('RIPPER ROO!');
+    state = 'play'; bossUI.fade.classList.remove('on'); toast('RIPPER ROO!'); sfx('intro'); music('boss');
   }, 1300);
 }
 function bossReset() {                       // back to the very start of the game
@@ -680,12 +677,12 @@ function spawnRock(kind) {
   scene.add(mesh);
   const phase = BOSS_HP - boss.hp;
   boss.rocks.push({ mesh, kind, r, tx, speed: big ? 5.5 + phase * 0.5 : 7 + phase * 0.9 });   // tx: the lane it rolls toward
-  beep(kind === 'big' ? 160 : 320, 0.15, 'square', 0.05, 120);
+  sfx(kind === 'big' ? 'throwBig' : 'throw');
   if (big) toast('BIG ROCK! SPIN INTO IT!');
 }
 function hitBoss() {
   boss.hp--; boss.stun = 1.8; boss.flash = 1.4; boss.bigT = 6; boss.want = null; boss.act = null;
-  updateBossBar(); beep(180, 0.4, 'sawtooth', 0.1, -100);
+  updateBossBar(); sfx('bossHit');
   const p = boss.root.position.clone(); p.y += 2; spawnBoom(p, 1.6); spawnDebris(p);
   if (boss.hp <= 0) { boss.dead = 0.001; clearRocks(); toast('RIPPER ROO DEFEATED!'); }
   else toast(`RIPPER ROO LOSES A LIFE! ${boss.hp} LEFT`);
@@ -699,7 +696,7 @@ function updateBoss(dt) {
     boss.root.scale.setScalar(Math.max(0.01, 1 - Math.max(0, boss.dead - 1.8) * 1.2)); bossShadow.visible = false;
     if (Math.random() < dt * 14) { const p = bp.clone(); p.x += (Math.random() - 0.5) * 3; p.y += 1 + Math.random() * 3; spawnBoom(p, 0.8 + Math.random()); }
     if (boss.dead > 2.6 && state === 'play') {
-      boss.root.visible = false; bossUI.bar.hidden = true; state = 'won'; uiLockUntil = performance.now() + 900; beep(600, 0.8, 'triangle', 0.09, 700);
+      boss.root.visible = false; bossUI.bar.hidden = true; state = 'won'; uiLockUntil = performance.now() + 900; music(null); sfx('victory');
       showMsg('YOU DEFEATED RIPPER ROO!', `Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
     }
     return;
@@ -743,7 +740,7 @@ function updateBoss(dt) {
         bp.x = a.x0 + (a.x1 - a.x0) * (k * k * (3 - 2 * k)); P.lift = a.h * 4 * k * (1 - k);
         P.sy = 1.13 - 0.13 * Math.min(1, k * 2); P.tuck = 0.95 * Math.sin(Math.min(1, k * 1.6) * Math.PI / 2) * (1 - 0.4 * k); P.lean = 0.2 - 0.3 * k;
         P.tilt = -(a.x1 - a.x0) * 0.025 * Math.sin(k * Math.PI); P.flutter = k < 0.5 ? -0.25 : 0.3; P.nod = -0.2 * (1 - k);
-      } else { const k = (p - 0.82) / 0.18; bp.x = a.x1; P.sy = 1 - 0.24 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.lean = 0.15 * (1 - k); P.nod = 0.25 * Math.sin(k * Math.PI); } // landing squash
+      } else { if (!a.landed) { a.landed = true; sfx('bossLand'); } const k = (p - 0.82) / 0.18; bp.x = a.x1; P.sy = 1 - 0.24 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.lean = 0.15 * (1 - k); P.nod = 0.25 * Math.sin(k * Math.PI); } // landing squash
     } else if (a.kind === 'throw') {
       if (p < 0.22) { const k = p / 0.22; P.sy = 1 - 0.26 * Math.sin(k * Math.PI / 2); P.lean = -0.5 * k; P.tuck = 0.3 * k; P.nod = -0.3 * k; P.tongue = 1.2; }   // crouch and wind up, leaning back
       else if (p < 0.88) {
@@ -753,7 +750,7 @@ function updateBoss(dt) {
         P.lean = p <= a.rel ? -0.5 + 1.0 * rise : 0.5 * (1 - fall); P.nod = p <= a.rel ? -0.3 + 0.7 * rise : 0.4 * (1 - fall);
         P.flutter = p <= a.rel ? -0.3 : 0.4; P.tongue = 1.4;
         if (p >= a.rel && !a.released) { a.released = true; spawnRock(a.rock); }                                                                            // the rock leaves his hands at the top of the jump
-      } else { const k = (p - 0.88) / 0.12; P.sy = 1 - 0.3 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.nod = 0.3 * Math.sin(k * Math.PI); }                // heavy landing
+      } else { if (!a.landed) { a.landed = true; sfx('bossLand'); } const k = (p - 0.88) / 0.12; P.sy = 1 - 0.3 * Math.sin(k * Math.PI); P.tuck = 0.3 * (1 - k); P.nod = 0.3 * Math.sin(k * Math.PI); }                // heavy landing
     } else if (a.kind === 'stun') {
       yaw = boss.t * 9; P.sy = 1 + Math.sin(a.t * 18) * 0.08; P.lean = Math.sin(a.t * 12) * 0.2; P.lift = Math.abs(Math.sin(a.t * 6)) * 0.35; P.nod = Math.sin(a.t * 10) * 0.3; P.tongue = 1.6; P.flutter = 0.3;
     }
@@ -783,11 +780,11 @@ function updateBoss(dt) {
       const powered = player.spin > 0 || invincible > 0;
       if (rk.kind === 'big') {
         if (low && dist < rk.r + (powered ? 1.9 : 0.5)) {
-          if (powered) { rk.kind = 'returning'; beep(700, 0.2, 'triangle', 0.08, 300); toast('NICE HIT!'); }
+          if (powered) { rk.kind = 'returning'; sfx('deflect'); toast('NICE HIT!'); }
           else { hit(); spawnDebris(mp); spawnBoom(mp, 1.2); gone = true; boss.bigT = 5; }
         }
       } else if (low && dist < rk.r + 0.5) {
-        if (powered) beep(260, 0.12, 'square', 0.06, -80); else hit();
+        if (powered) sfx('rockSmash'); else hit();
         spawnDebris(mp); gone = true;
       }
     }
@@ -859,6 +856,7 @@ function update(dt) {
   }
   for (const c of crates) if (c.armed && !c.broken) {
     c.timer -= dt;
+    if (Math.ceil(c.timer) < c.tick && c.timer > 0) { c.tick = Math.ceil(c.timer); sfx('tick'); }   // one tick per second
     c.label.material.map = countdownTex[Math.max(0, Math.min(2, Math.ceil(c.timer) - 1))];
     c.mesh.material.emissive.setHex(Math.floor(c.timer * 6) % 2 ? 0xaa1100 : 0x000000);
     if (c.timer <= 0) explodeTnt(c);
@@ -892,7 +890,7 @@ function update(dt) {
   player.jumpBuf -= dt; player.spinCd -= dt; player.hurt -= dt;
   if (invincible > 0) { const was = Math.ceil(invincible); invincible = Math.max(0, invincible - dt); if (Math.ceil(invincible) !== was) updateHud(); }
   if (player.jumpBuf > 0 && player.coyote > 0) {
-    player.vel.y = JUMP_V; player.coyote = 0; player.jumpBuf = 0; player.grounded = false; beep(400, 0.15, 'square', 0.04, 250);
+    player.vel.y = JUMP_V; player.coyote = 0; player.jumpBuf = 0; player.grounded = false; sfx('jump');
   }
   if (!(keys.Space || keys.KeyK) && player.vel.y > 4) player.vel.y -= 40 * dt; // variable jump height
   player.vel.y = Math.max(player.vel.y - GRAVITY * dt, -30);   // terminal velocity: never fast enough to tunnel a 1-unit crate
@@ -901,12 +899,13 @@ function update(dt) {
   const ground = player.ground;
   if (player.grounded && ground && ground.delta) player.pos[ground.mover.axis] += ground.delta;
 
-  const wasGrounded = player.grounded;
+  const wasGrounded = player.grounded, vyBefore = player.vel.y;
   player.grounded = false; player.ground = null;
   moveAxis('x', player.vel.x * dt);
   moveAxis('z', player.vel.z * dt);
   moveAxis('y', player.vel.y * dt);
   if (!player.grounded && wasGrounded && player.vel.y <= 0.01) snapToRamp();
+  if (player.grounded && !wasGrounded && vyBefore < -8) sfx('land');   // a proper landing makes a thud
 
   // spin
   if (player.spin > 0) {
@@ -923,7 +922,7 @@ function update(dt) {
     if (f.got) continue;
     f.mesh.position.y = f.baseY + Math.sin(time * 3 + f.baseY) * 0.08;
     if (f.mesh.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 0.9, player.pos.z)) < 0.9) {
-      f.got = true; f.mesh.visible = false; addFruit(1); beep(1000, 0.06, 'triangle', 0.04);
+      f.got = true; f.mesh.visible = false; addFruit(1); sfx('fruit');
     }
   }
   // enemies
@@ -934,7 +933,7 @@ function update(dt) {
     if (dx * dx + dz * dz < 0.8 && Math.abs(dy) < 1.2) {
       const stomp = player.vel.y < 0 && player.pos.y > e.mesh.position.y - 0.1;
       if (player.spin > 0 || stomp || invincible > 0) {
-        e.alive = false; e.mesh.visible = false; beep(150, 0.2, 'square', 0.07, -60);
+        e.alive = false; e.mesh.visible = false; sfx('squish');
         if (stomp && player.spin <= 0) { player.vel.y = JUMP_V * 0.8; }
         addFruit(2);
       } else hit();
@@ -1026,5 +1025,5 @@ function frame() {
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();

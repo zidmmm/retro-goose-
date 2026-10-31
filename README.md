@@ -31,3 +31,6 @@ Stomp crates and enemies, collect fruit (100 = extra life), hit checkpoint crate
 
 ## Boss fight
 Reach the portal at the end of the level to face Ripper Roo (5 lives, shown on the health bar). Small rocks roll at you: jump or dodge them (a spin smashes them). Every so often a big glowing rock rolls in: spin into it to knock it back, and Ripper Roo loses a life.
+
+## Sound
+All music and sound effects are synthesized in the browser (no audio files). Jungle theme during the level, a faster theme for the boss. Press M or tap the speaker button (top right) to mute; the choice is remembered.
