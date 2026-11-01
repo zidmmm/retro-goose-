@@ -18,7 +18,7 @@ const ARENA = { z: LEVEL_END - 200, w: 20, d: 26 };  // boss arena: front edge z
 const CHASE = { z0: 120, len: 700, R: 3.4 };           // level 2: a boulder chase that runs toward +z (toward the camera) from here
 const ARENA2 = { z: 1100, w: 22, d: 26, back: 14 };    // Dr. Neo Cortex's lab: front edge z, width, depth (the player enters at the front, Cortex hovers at the far end)
 const CORTEX_HP = 6;                                    // 3 hits on solid floor, then he pulls the lever (stage two), then 3 more over the pit
-const CHASE2 = { z0: 2600, len: 640, R: 3.0 };        // level 4 (World 2): a wall of fire chases you toward the camera
+const CHASE2 = { z0: 2600, len: 520, R: 3.0 };        // level 4 (World 2): a wall of fire chases you toward the camera
 const TEMPLE = { z0: 2400, len: 620 };                 // level 3 (World 2): temple platformer, runs toward -z from here
 const UKA = { z: 3700, w: 24, d: 28, back: 14 };       // Uka Uka's temple arena
 const UKA_HP = 6;                                      // 3 hits over solid floor, then the floor catches fire (stage two), then 3 more
@@ -271,7 +271,7 @@ function buildTemple() {
       for (const d of [14, 24]) enemy(0, 0, z - d, 'x', 3.5); fruitLine(0, 0.9, z - 4, e + 3, 8); return e; },
     jets(z) { const len = 44, e = z - len; platform(0, z, e, 9); walls(z, e, 4.5, 3); braziers(z, len, 4.5, 3); cp(z - 2);
       for (let k = 0; k < 4; k++) { const zz = z - 10 - k * 8, ph = k * 0.8;                       // the side jets and the middle jet take turns, so one way through is always open
-        fireJet(-3, 0, zz, 3.6, ph); fireJet(3, 0, zz, 3.6, ph); fireJet(0, 0, zz, 3.6, ph + 1.8); fruit(0, 1.6, zz - 4); }
+        fireJet(-3, 0, zz, 5.2, ph); fireJet(3, 0, zz, 5.2, ph); fireJet(0, 0, zz, 5.2, ph + 2.6); fruit(0, 1.6, zz - 4); }
       aku(z - len + 4); return e; },
     crumble(z) { const cnt = 5 + ((rng() * 3) | 0); platform(0, z, z - 6, 6); cp(z - 2);
       let zz = z - 6 - 2.2; const xs = [0, 1.6, -1.6];
@@ -285,7 +285,7 @@ function buildTemple() {
       enemy(0, 0, e + 5, 'x', 3.5); return e; },
     ramps(z) { platform(0, z, z - 4, 8); ramp(0, 8, z - 4, 0, z - 14, 2.4); platform(0, z - 14, z - 30, 8, 2.4); ramp(0, 8, z - 30, 2.4, z - 40, 0); platform(0, z - 40, z - 44, 8);
       walls(z, z - 44, 4, 4.5); braziers(z, 44, 4, 4.5); cp(z - 2);
-      fireJet(-2.4, 2.4, z - 18, 3.2, 0); fireJet(2.4, 2.4, z - 18, 3.2, 1.6); fireJet(0, 2.4, z - 26, 3.2, 0.8);
+      fireJet(-2.4, 2.4, z - 18, 4.6, 0); fireJet(2.4, 2.4, z - 18, 4.6, 2.3); fireJet(0, 2.4, z - 26, 4.6, 1.2);
       crate(-2.5, 2.4, z - 22, 'normal'); crate(2.5, 2.4, z - 22, 'normal'); aku(z - 29, 0.5); enemy(0, 2.4, z - 23, 'x', 3);
       rampFruit(z - 4, 0, z - 14, 2.4, 4); rampFruit(z - 30, 2.4, z - 40, 0, 4); return z - 44; },
   };
@@ -708,7 +708,7 @@ function respawn() {
   player.grounded = false; player.ground = null; player.coyote = 0; player.jumpBuf = 0;   // an old moving platform must not keep carrying us
   camSnap = true; aku.userData.init = false;
   const ac = activeChase();
-  if (ac) { player.facing = 0; modelHolder.userData.yaw = 0; placeChaser(ac, checkpoint.z - 17); ac.stun = 0; }   // runs toward the camera; the chaser starts behind
+  if (ac) { player.facing = 0; modelHolder.userData.yaw = 0; placeChaser(ac, checkpoint.z - (ac.kind === 'fire' ? 26 : 17)); ac.stun = 0; }   // runs toward the camera; the chaser starts behind
   if (temple.active) { player.facing = Math.PI; modelHolder.userData.yaw = Math.PI; }
   if (uka.active && uka.dead === 0) { clearUkaShots(); uka.act = null; uka.shootT = Math.max(uka.shootT, 1.6); uka.intro = Math.max(uka.intro, 1.2); resetLanes(); uka.laneT = Math.max(uka.laneT, 2.5); }
   if (cortex.active && cortex.dead === 0) { clearBlasts(); cortex.act = null; cortex.shootT = Math.max(cortex.shootT, 1.5); cortex.intro = Math.max(cortex.intro, 1.2); }
@@ -1070,8 +1070,8 @@ function updateChase(c, dt) {
   const b = c.boulder, R = chaserR(c), bp = b.position, cfg = c.cfg;
   c.t += dt;
   const lead = player.pos.z - bp.z, progress = Math.min(1, Math.max(0, (player.pos.z - cfg.z0) / cfg.len));
-  let v = (c.kind === 'fire' ? 6.9 : 6.6) + progress * 0.8;      // a touch slower than Crash, and faster later on
-  if (lead > 24) v += 2.5; else if (lead < 9) v -= 0.5;         // rubber band: never hopelessly far, never unfairly close
+  let v = (c.kind === 'fire' ? 5.9 : 6.6) + progress * (c.kind === 'fire' ? 0.5 : 0.8);      // a touch slower than Crash, and faster later on
+  if (lead > 24) v += 2.5; else if (lead < (c.kind === 'fire' ? 13 : 9)) v -= (c.kind === 'fire' ? 1.2 : 0.5);         // rubber band: never hopelessly far, never unfairly close
   if (c.stun > 0) { c.stun -= dt; v *= 0.15; }
   bp.z += v * dt;
   if (c.kind === 'fire') {
@@ -1348,7 +1348,7 @@ function startChase2() {
 function enterChase2() { enterChaseStage(chase2); }
 function updateJets(dt) {
   for (const j of fireJets) {
-    const t = (time + j.phase) % j.period, tOn = j.period - 1.0, on = t >= tOn, warn = !on && t >= tOn - 0.9;
+    const t = (time + j.phase) % j.period, tOn = j.period - 0.9, on = t >= tOn, warn = !on && t >= tOn - 1.1;
     j.glow.material.color.setHex(on ? 0xffee88 : warn ? (Math.floor(time * 12) % 2 ? 0xff2200 : 0xffaa22) : 0x7a2a10);
     if (on && !j.on && Math.abs(j.z - player.pos.z) < 28) sfx('flame');
     j.on = on;
