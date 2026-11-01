@@ -204,6 +204,7 @@ THEMES.cortex = {                // final boss: dark, menacing, with a chromatic
   kick: [1, 0, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 0, 1, 0], snare: [0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], hat: [0, 0, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 1],
   leadType: 'sawtooth', leadVol: 0.055,
 };
+THEMES.space = { ...THEMES.cortex, bpm: 152, lead: THEMES.cortex.lead.map(b => b.map(n => n === R ? R : n + 5)), leadType: 'square' };   // Cortex in space: the Cortex theme, faster and higher
 function playStep(th, s, t) {
   const bar = (s >> 4) % 4, i = s & 15, d = 60 / th.bpm / 4;
   const b = th.bass[bar][i], l = th.lead[bar][i];

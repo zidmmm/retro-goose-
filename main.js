@@ -21,6 +21,8 @@ const CORTEX_HP = 6;                                    // 3 hits on solid floor
 const CHASE2 = { z0: 2600, len: 520, R: 3.0 };        // level 4 (World 2): a wall of fire chases you toward the camera
 const TEMPLE = { z0: 2400, len: 620 };                 // level 3 (World 2): temple platformer, runs toward -z from here
 const UKA = { z: 3700, w: 24, d: 28, back: 14 };       // Uka Uka's temple arena
+const SPACE = { z: 5200, w: 22, rows: 8, gap: 3.4 };    // the final final boss: Dr. Neo Cortex's floating tile arena in space
+const SPACE_HP = 6;
 const UKA_HP = 6;                                      // 3 hits over solid floor, then the floor catches fire (stage two), then 3 more
 const WORLD_END = ARENA.z - ARENA.d - 60;            // scenery (floor, plants) extends this far
 
@@ -54,7 +56,7 @@ const M = { ...T, spike: mat(0xcfd8dc), step: T.grass, portal: new THREE.MeshBas
 const TW = makeTempleMaterials();            // World 2 (temple) materials
 const TH = { floor: M.grass, wall: M.wall, dirt: M.dirt };   // what the level builders use; swapped to the temple set while building World 2
 function useTheme(name) { if (name === 'temple') { TH.floor = TW.floor; TH.wall = TW.wall; TH.dirt = TW.floor; } else { TH.floor = M.grass; TH.wall = M.wall; TH.dirt = M.dirt; } }
-const LOOKS = { jungle: { bg: 0x4f7a52, fog: [22, 85], sky: 0xe6f2c8, ground: 0x6a4a28, sun: 0xffe2a8 }, temple: { bg: 0x3d1c12, fog: [18, 78], sky: 0xffc89a, ground: 0x5a2a18, sun: 0xff9a52 } };
+const LOOKS = { jungle: { bg: 0x4f7a52, fog: [22, 85], sky: 0xe6f2c8, ground: 0x6a4a28, sun: 0xffe2a8 }, temple: { bg: 0x3d1c12, fog: [18, 78], sky: 0xffc89a, ground: 0x5a2a18, sun: 0xff9a52 }, space: { bg: 0x04050c, fog: [60, 140], sky: 0x9aa8ff, ground: 0x24244a, sun: 0xc8d4ff } };
 function setWorldLook(name) {                // sky, fog and light colours for the jungle world or the temple world
   const L = LOOKS[name]; scene.background = new THREE.Color(L.bg); scene.fog = new THREE.Fog(L.bg, L.fog[0], L.fog[1]);
   hemi.color.setHex(L.sky); hemi.groundColor.setHex(L.ground); sun.color.setHex(L.sun);
@@ -68,6 +70,7 @@ const chase2 = { active: false, boulder: null, finish: null, endZ: 0, stun: 0, t
 const temple = { active: false, finish: null, endZ: 0 };
 const uka = { active: false, hp: UKA_HP, stage: 1, intro: 0, stun: 0, dead: 0, t: 0, act: null, shootT: 1.5, flash: 0, sweep: 0, shotN: 0, laneT: 5, root: new THREE.Group(), model: null, baseScale: 1, mat: null, projectiles: [], lanes: [], aura: null, spirit: null };
 const fireJets = [], crumbles = [], torches = [];
+const space = { active: false, hp: 6, stage: 1, intro: 0, stun: 0, dead: 0, t: 0, flash: 0, seqPending: false, bombT: 3, boulderT: 5, sweep: 0, throwing: 0, rows: [], bombs: [], boulders: [], platform: null, stars: null, zp: 0 };
 const cortex = { active: false, hp: CORTEX_HP, stage: 1, intro: 0, stun: 0, dead: 0, t: 0, act: null, idleT: 1, flash: 0, laugh: 0, recoil: 0, seq: null, seqPending: false,
   floorOpen: 0, wantOpen: false, padTimer: 7, sweep: 0, shootT: 1.5, rootX: 0, root: new THREE.Group(), platform: null, lever: null, floor: [], pads: [], blasts: [], model: null, anim: null, gun: null };
 function makeRng(seed) { return () => { seed |= 0; seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -331,6 +334,29 @@ function stageScenery2() {                   // lava below everything, stone col
   add(CHASE2.z0 - 45, chase2.endZ + 30, 5, 8);
   add(UKA.z - UKA.d - 20, UKA.z + UKA.back + 10, 6, 14);
 }
+// ---------- the final final boss: Dr. Neo Cortex in space ----------
+function buildSpaceArena() {
+  const z0 = SPACE.z, rows = SPACE.rows, gap = SPACE.gap, zEnd = z0 - 4 - (rows - 1) * gap - gap / 2;
+  platform(0, z0 + 7, zEnd, SPACE.w).mesh.visible = false;                                   // the solid floor (the tiles below are just what you see)
+  addBox(0, 3, z0 + 6.5, SPACE.w, 6, 1, TH.wall, { wall: true }).mesh.visible = false;      // invisible start line
+  const tileGeo = new THREE.BoxGeometry(2.7, 0.3, gap - 0.35), safeMat = new THREE.MeshLambertMaterial({ color: 0x2c3556, emissive: 0x070a18 });
+  const addRow = (zc, mat) => { const tiles = []; for (let c = -3; c <= 3; c++) { const t = new THREE.Mesh(tileGeo, mat); t.position.set(c * 3, -0.15, zc); scene.add(t); freeze(t); tiles.push(t); } return tiles; };
+  for (const zc of [z0 + 1.2, z0 + 4.6]) addRow(zc, safeMat);                                 // safe tiles at the start
+  for (let i = 0; i < rows; i++) {
+    const zc = z0 - 4 - i * gap, mat = new THREE.MeshLambertMaterial({ color: 0x3f4f86, emissive: 0x0a1030 });
+    const flames = []; for (let k = 0; k < 7; k++) { const s = new THREE.Sprite(TW.flame); s.scale.set(2.4, 3, 1); s.position.set((k - 3) * 3, 1.4, zc); s.visible = false; s.userData.dynamic = true; scene.add(s); flames.push(s); }
+    space.rows.push({ z: zc, mat, tiles: addRow(zc, mat), flames, state: 'idle', t: 0, warn: 1.6 });
+  }
+  const zp = z0 - 4 - rows * gap - 6, g = new THREE.Group(); g.position.set(0, 5, zp);        // Cortex's hover disc
+  const metal = new THREE.MeshLambertMaterial({ map: M.moving[0].map, color: 0x8899aa });
+  g.add(new THREE.Mesh(new THREE.CylinderGeometry(4.6, 3.4, 1, 14), metal));
+  const glow = new THREE.Mesh(new THREE.CircleGeometry(3.2, 20), new THREE.MeshBasicMaterial({ color: 0x55ddff, transparent: true, opacity: 0.55 })); glow.rotation.x = Math.PI / 2; glow.position.y = -0.55; g.add(glow);
+  g.visible = false; scene.add(g); space.platform = g; space.zp = zp;
+  const pts = new Float32Array(900); for (let i = 0; i < 300; i++) { const a = Math.random() * Math.PI * 2, b = Math.acos(Math.random() * 1.6 - 0.8), r = 70; pts[i * 3] = r * Math.sin(b) * Math.cos(a); pts[i * 3 + 1] = r * Math.cos(b); pts[i * 3 + 2] = r * Math.sin(b) * Math.sin(a); }
+  const sg = new THREE.BufferGeometry(); sg.setAttribute('position', new THREE.BufferAttribute(pts, 3));
+  space.stars = new THREE.Points(sg, new THREE.PointsMaterial({ color: 0xffffff, size: 2.4, sizeAttenuation: false, fog: false })); space.stars.visible = false; space.stars.frustumCulled = false; scene.add(space.stars);
+  crate(-7, 0, z0 + 2, 'aku'); crate(7, 0, z0 + 2, 'life');
+}
 // ---------- level ----------
 function buildLevel() {
   // 1. start area
@@ -481,7 +507,7 @@ function buildLevel() {
   // scenery
   buildArena();
   enemyMat = M.scorpion; buildChase(chase); enemyMat = M.enemy; buildArena2(); stageScenery();
-  enemyMat = M.scorpion; useTheme('temple'); buildTemple(); buildChase(chase2); buildUkaArena(); stageScenery2(); useTheme('jungle'); enemyMat = M.enemy;   // World 2 is built with the temple materials
+  enemyMat = M.scorpion; useTheme('temple'); buildTemple(); buildChase(chase2); buildUkaArena(); stageScenery2(); useTheme('jungle'); enemyMat = M.enemy; buildSpaceArena();   // World 2 is built with the temple materials
   const worldLen = -WORLD_END + 300;
   const water = new THREE.Mesh(new THREE.PlaneGeometry(500, worldLen), M.water);
   M.water.map.repeat.set(120, Math.round(worldLen / 2.4));
@@ -678,8 +704,8 @@ function beginGame() {                        // from the map's START button: Cr
   checkpoint.set(0, 0, 0); player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
   updateHud(); music('level'); setTimeout(checkSound, 900);
 }
-function stageKey() { return uka.active ? 'uka' : chase2.active ? 'chase2' : temple.active ? 'temple1' : cortex.active ? 'cortex' : chase.active ? 'chase' : boss.active ? 'boss1' : 'level1'; }
-const STAGE_NAMES = { level1: 'level 1', boss1: 'the Ripper Roo fight', chase: 'level 2 (the boulder chase)', cortex: 'the Dr. Neo Cortex fight', temple1: 'level 3 (the temple)', chase2: 'level 4 (the fire chase)', uka: 'the Uka Uka fight' };
+function stageKey() { return space.active ? 'space' : uka.active ? 'uka' : chase2.active ? 'chase2' : temple.active ? 'temple1' : cortex.active ? 'cortex' : chase.active ? 'chase' : boss.active ? 'boss1' : 'level1'; }
+const STAGE_NAMES = { level1: 'level 1', boss1: 'the Ripper Roo fight', chase: 'level 2 (the boulder chase)', cortex: 'the Dr. Neo Cortex fight', temple1: 'level 3 (the temple)', chase2: 'level 4 (the fire chase)', uka: 'the Uka Uka fight', space: 'the final fight with Dr. Neo Cortex in space' };
 let retryStage = 'level1';                   // the stage you got Game Over in: that is where you start again
 function resetGame(stage = 'level1') {
   if (mapSt.active) { mapSt.active = false; mapRoot.visible = false; scene.fog = mapSt.saved.fog; scene.background = mapSt.saved.bg; camera.far = mapSt.saved.far; camera.updateProjectionMatrix(); document.getElementById('mapBanner').hidden = true; document.getElementById('mapHint').hidden = true; }
@@ -696,7 +722,7 @@ function resetGame(stage = 'level1') {
   for (const list of [debris, pops, booms]) { for (const o of list) scene.remove(o); list.length = 0; }
   player.pos.set(0, 0, 0); respawn(); player.hurt = 0;
   state = 'play'; msg.classList.add('hidden'); updateHud();
-  if (stage === 'boss1') enterBoss(); else if (stage === 'chase') enterChase(); else if (stage === 'cortex') enterCortex(); else if (stage === 'temple1') enterTemple(); else if (stage === 'chase2') enterChase2(); else if (stage === 'uka') enterUka(); else music('level');   // start the stage you were on again (not level 1)
+  if (stage === 'boss1') enterBoss(); else if (stage === 'chase') enterChase(); else if (stage === 'cortex') enterCortex(); else if (stage === 'temple1') enterTemple(); else if (stage === 'chase2') enterChase2(); else if (stage === 'uka') enterUka(); else if (stage === 'space') enterSpace(); else music('level');   // start the stage you were on again (not level 1)
 }
 let camSnap = true;   // jump the camera straight to the player (respawn / restart) instead of gliding across the level
 function respawn() {
@@ -710,6 +736,7 @@ function respawn() {
   const ac = activeChase();
   if (ac) { player.facing = 0; modelHolder.userData.yaw = 0; placeChaser(ac, checkpoint.z - (ac.kind === 'fire' ? 26 : 17)); ac.stun = 0; }   // runs toward the camera; the chaser starts behind
   if (temple.active) { player.facing = Math.PI; modelHolder.userData.yaw = Math.PI; }
+  if (space.active && space.dead === 0) { clearSpaceShots(); resetRows(); space.bombT = Math.max(space.bombT, 2.5); space.boulderT = Math.max(space.boulderT, 3); space.intro = Math.max(space.intro, 1.2); }
   if (uka.active && uka.dead === 0) { clearUkaShots(); uka.act = null; uka.shootT = Math.max(uka.shootT, 1.6); uka.intro = Math.max(uka.intro, 1.2); resetLanes(); uka.laneT = Math.max(uka.laneT, 2.5); }
   if (cortex.active && cortex.dead === 0) { clearBlasts(); cortex.act = null; cortex.shootT = Math.max(cortex.shootT, 1.5); cortex.intro = Math.max(cortex.intro, 1.2); }
   if (boss.active && boss.dead === 0) { clearRocks(); boss.act = null; boss.want = null; boss.intro = Math.max(boss.intro, 1.5); boss.bigT = Math.max(boss.bigT, 6); }   // fresh start in the arena
@@ -1117,7 +1144,7 @@ function enterCortex() {                     // put Crash in Dr. Neo Cortex's la
 }
 function stagesReset() {                      // back to the very start of the game
   chase.active = chase2.active = false; chase.boulder.visible = chase2.boulder.visible = false; dangerEl.style.opacity = 0; setRumble(0);
-  temple.active = false; resetCrumbles(); ukaReset(); setWorldLook('jungle');
+  temple.active = false; resetCrumbles(); ukaReset(); spaceReset(); setWorldLook('jungle');
   cortex.active = false; cortex.dead = 0; cortex.seq = null; cortex.seqPending = false; clearBlasts(); resetPads(); cortex.root.visible = true; cortex.root.rotation.set(0, 0, 0);
   cortex.platform.rotation.set(0, 0, 0); cortex.platform.position.set(0, 5.6, cortex.zp);
 }
@@ -1466,8 +1493,7 @@ function updateUka(dt) {
     u.dead += dt; u.root.position.y += dt * (0.5 + u.dead * 1.5); u.root.rotation.y += dt * 10; u.root.rotation.z += dt * 2.5;
     if (Math.random() < dt * 16) { u.root.getWorldPosition(hitPt); hitPt.x += (Math.random() - 0.5) * 8; hitPt.y += (Math.random() - 0.5) * 8; spawnBoom(hitPt, 1 + Math.random() * 1.5); }
     if (u.dead > 3.4 && state === 'play') {
-      u.active = false; bossUI.bar.hidden = true; u.root.visible = false; clearUkaShots(); resetLanes(); state = 'won'; uiLockUntil = performance.now() + 900; music(null); sfx('victory');
-      showMsg('YOU DEFEATED UKA UKA!', `You beat the game!<br>Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
+      u.active = false; u.root.visible = false; clearUkaShots(); resetLanes(); startSpace();      // one more boss: Dr. Neo Cortex, in space
     }
     return;
   }
@@ -1517,13 +1543,143 @@ function updateUka(dt) {
   }
 }
 
+// ---------- Dr. Neo Cortex in space ----------
+// He lobs bombs that land on a whole ROW of tiles (the row flashes red first: get off it). Small boulders drop, then bounce toward you:
+// SPIN into one to send it flying back at him, which hurts him. Half way down, he gets faster.
+const boulderGeo = new THREE.IcosahedronGeometry(0.75, 1), boulderMat = new THREE.MeshLambertMaterial({ map: M.wall[0].map, color: 0xb9a98c, flatShading: true });
+const bombGeo = new THREE.SphereGeometry(0.55, 12, 8), bombMat = new THREE.MeshLambertMaterial({ color: 0x15151a, emissive: 0x220000 });
+const markerMat = new THREE.MeshBasicMaterial({ color: 0xff3a1a, transparent: true, opacity: 0.5, depthWrite: false });
+const upAim = new THREE.Vector3(0.3, 1, 0.5).normalize(), SPACE_SHOT_Z = new THREE.Vector3(0, 0, 1), sBase = new THREE.Vector3(), sEnd = new THREE.Vector3();
+function clearSpaceShots() {
+  for (const b of space.bombs) scene.remove(b.mesh); space.bombs.length = 0;
+  for (const b of space.boulders) { scene.remove(b.mesh); scene.remove(b.marker); } space.boulders.length = 0;
+}
+function resetRows() { for (const r of space.rows) { r.state = 'idle'; r.t = 0; r.mat.emissive.setHex(0x0a1030); r.mat.color.setHex(0x3f4f86); for (const f of r.flames) f.visible = false; } }
+function spaceReset() {
+  Object.assign(space, { active: false, hp: SPACE_HP, stage: 1, intro: 0, stun: 0, dead: 0, t: 0, flash: 0, seqPending: false, bombT: 3, boulderT: 5, sweep: 0, throwing: 0 });
+  clearSpaceShots(); resetRows();
+  space.platform.visible = false; space.platform.position.set(0, 5, space.zp); space.platform.rotation.set(0, 0, 0); space.stars.visible = false;
+  cortex.platform.add(cortex.root); cortex.root.position.set(0, 0.45, 0); cortex.root.rotation.set(0, 0, 0);
+}
+function startSpace() {
+  toast('UKA UKA DEFEATED!'); sfx('victory'); music(null);
+  fadeThen(() => { uka.active = false; bossUI.bar.hidden = true; enterMap(6, 7, 'UKA UKA DEFEATED!', enterSpace); }, 1800);
+}
+function enterSpace() {
+  chase.active = chase2.active = temple.active = uka.active = cortex.active = false; chase2.boulder.visible = false; setRumble(0); dangerEl.style.opacity = 0;
+  setWorldLook('space'); spaceReset(); Object.assign(space, { active: true, intro: 3.5 });
+  space.platform.visible = true; space.stars.visible = true; space.platform.add(cortex.root); cortex.root.position.set(0, 0.45, 0); cortex.root.visible = true;
+  checkpoint.set(0, 0, SPACE.z + 2); player.pos.set(0, 0, SPACE.z + 2); respawn(); player.hurt = 0;
+  setBossBar('DR. NEO CORTEX', SPACE_HP, SPACE_HP); bossUI.bar.hidden = false;
+  music('space'); sfx('intro'); toast('DR. NEO CORTEX... IN SPACE!'); cortexLaugh();
+}
+function launchBomb() {
+  const s = space, free = s.rows.filter(r => r.state === 'idle'); if (!free.length) return;
+  let row = free[(Math.random() * free.length) | 0];
+  if (Math.random() < 0.6) row = free.reduce((a, b) => Math.abs(b.z - player.pos.z) < Math.abs(a.z - player.pos.z) ? b : a);   // often right where you are standing
+  row.state = 'warn'; row.t = 0; row.warn = s.stage === 2 ? 1.3 : 1.6;
+  cortex.root.getWorldPosition(sBase); sBase.y += 4.4; sBase.z += 1;
+  const mesh = new THREE.Mesh(bombGeo, bombMat), fuse = new THREE.Sprite(TW.flame); fuse.scale.set(0.9, 1.1, 1); fuse.position.y = 0.8; mesh.add(fuse);
+  mesh.position.copy(sBase); scene.add(mesh);
+  s.bombs.push({ mesh, row, from: sBase.clone(), to: new THREE.Vector3((Math.random() - 0.5) * 12, 0.5, row.z), u: 0 }); s.throwing = 0.6; sfx('fireball');
+}
+function spawnBoulder() {
+  const s = space, z0 = SPACE.z, x = clampTo(player.pos.x + (Math.random() - 0.5) * 6, -9, 9), z = clampTo(player.pos.z - 4 - Math.random() * 6, z0 - 26, z0 + 4);
+  const mesh = new THREE.Mesh(boulderGeo, boulderMat); mesh.position.set(x, 16, z); scene.add(mesh);
+  const marker = new THREE.Mesh(new THREE.CircleGeometry(0.9, 14), markerMat); marker.rotation.x = -Math.PI / 2; marker.position.set(x, 0.05, z); scene.add(marker);
+  s.boulders.push({ mesh, marker, vel: new THREE.Vector3(), state: 'fall', bounces: 0 });
+}
+function spaceHit() {
+  const s = space; s.hp--; s.stun = 1.8; s.flash = 1.4;
+  setBossBar('DR. NEO CORTEX', SPACE_HP, s.hp); sfx('bossHit');
+  cortex.root.getWorldPosition(hitPt); hitPt.y += 2.2; spawnBoom(hitPt, 1.8); spawnDebris(hitPt);
+  if (s.hp <= 0) { s.dead = 0.001; clearSpaceShots(); resetRows(); toast('DR. NEO CORTEX IS DEFEATED!'); }
+  else if (s.hp === SPACE_HP / 2 && s.stage === 1) { s.stage = 2; toast('HE GOES CRAZY! FASTER!'); cortexLaugh(); }
+  else toast(`DR. NEO CORTEX LOSES A LIFE! ${s.hp} LEFT`);
+}
+function updateSpace(dt) {
+  const s = space, c = cortex, P = cortexP, z0 = SPACE.z;
+  s.t += dt; if (s.intro > 0) s.intro -= dt;
+  s.flash = Math.max(0, s.flash - dt); if (s.stun > 0) s.stun -= dt; s.throwing = Math.max(0, s.throwing - dt); c.laugh = Math.max(0, c.laugh - dt);
+  // ---- defeated: the disc tumbles away into space, then the game is won ----
+  if (s.dead > 0) {
+    s.dead += dt; s.platform.position.y += dt * (1 + s.dead * 3); s.platform.position.z -= dt * 6; s.platform.rotation.z += dt * 1.2; c.root.rotation.y += dt * 12;
+    if (Math.random() < dt * 14) { c.root.getWorldPosition(hitPt); hitPt.x += (Math.random() - 0.5) * 4; hitPt.y += Math.random() * 4; spawnBoom(hitPt, 0.8 + Math.random()); }
+    if (s.dead > 3.4 && state === 'play') {
+      s.active = false; bossUI.bar.hidden = true; s.platform.visible = false; state = 'won'; uiLockUntil = performance.now() + 900; music(null); sfx('victory');
+      showMsg('YOU DEFEATED DR. NEO CORTEX IN SPACE!', `You beat the whole game!<br>Fruit: ${fruitCount} &nbsp; Crates: ${cratesBroken}/${totalCrates} &nbsp; Lives: ${lives}<br>Press <kbd>Enter</kbd> or tap the button to play again`, 'PLAY AGAIN');
+    }
+    return;
+  }
+  const fighting = s.intro <= 0;
+  // ---- the hover disc drifts side to side ----
+  if (s.stun <= 0) s.sweep += dt * (s.stage === 2 ? 0.8 : 0.55);
+  s.platform.position.set(Math.sin(s.sweep) * 7, 5 + Math.sin(s.t * 2) * 0.2, s.zp); s.platform.rotation.z = Math.cos(s.sweep) * 0.05;
+  // ---- attacks ----
+  if (fighting && s.stun <= 0) {
+    s.bombT -= dt; if (s.bombT <= 0) { launchBomb(); if (s.stage === 2 && Math.random() < 0.5) launchBomb(); s.bombT = s.stage === 2 ? 3.4 : 4.6; }
+    s.boulderT -= dt; if (s.boulderT <= 0) { spawnBoulder(); s.boulderT = s.stage === 2 ? 3.6 : 5.6; }
+  }
+  // ---- rows of tiles: warn (flashing red), then the blast ----
+  for (const r of s.rows) {
+    if (r.state === 'idle') continue;
+    r.t += dt;
+    if (r.state === 'warn') { r.mat.emissive.setHex(Math.floor(r.t * 10) % 2 ? 0xff2200 : 0x882200); }
+    else {                                                                                 // blast: flames across the row, hurts anyone on it
+      r.mat.emissive.setHex(0xffaa44);
+      r.flames.forEach((f, i) => { f.visible = true; const k = Math.min(1, r.t / 0.12) * Math.min(1, (0.7 - r.t) / 0.2), sc = (2.4 + Math.sin(time * 20 + i) * 0.3) * k; f.scale.set(sc, sc * 1.25, 1); f.position.y = 0.4 + sc * 0.55; });
+      if (Math.abs(player.pos.z - r.z) < SPACE.gap / 2 + 0.1 && player.pos.y < 1.6) hit();
+      if (r.t > 0.7) { r.state = 'idle'; r.mat.emissive.setHex(0x0a1030); for (const f of r.flames) f.visible = false; }
+    }
+  }
+  // ---- bombs fly in a high arc and land when the row's warning ends ----
+  for (let i = s.bombs.length - 1; i >= 0; i--) {
+    const b = s.bombs[i]; b.u += dt / b.row.warn; const u = Math.min(1, b.u);
+    b.mesh.position.lerpVectors(b.from, b.to, u); b.mesh.position.y += Math.sin(u * Math.PI) * 7; b.mesh.rotation.x += dt * 6;
+    if (b.u >= 1) { b.row.state = 'blast'; b.row.t = 0; sfx('boom'); spawnBoom(b.mesh.position, 1.4); scene.remove(b.mesh); s.bombs.splice(i, 1); }
+  }
+  // ---- boulders: drop, then bounce toward you; a spin sends them back at Cortex ----
+  for (let i = s.boulders.length - 1; i >= 0; i--) {
+    const b = s.boulders[i], p = b.mesh.position; let gone = false;
+    if (b.state === 'return') {
+      c.root.getWorldPosition(hitPt); hitPt.y += 2.2; b.vel.copy(hitPt).sub(p).setLength(22); p.addScaledVector(b.vel, dt); b.mesh.rotation.x += dt * 12;
+      if (p.distanceTo(hitPt) < 3) { spaceHit(); gone = true; }
+    } else {
+      b.vel.y -= 28 * dt; p.addScaledVector(b.vel, dt); b.mesh.rotation.x += dt * 5; b.mesh.rotation.z += dt * 3;
+      const onFloor = p.z < z0 + 7 && p.z > z0 - 4 - SPACE.rows * SPACE.gap && Math.abs(p.x) < SPACE.w / 2;
+      if (p.y <= 0.75 && b.vel.y < 0 && onFloor) {
+        p.y = 0.75; b.bounces++; b.state = 'bounce'; sfx('land');
+        tmp.set(player.pos.x - p.x, 0, player.pos.z - p.z).normalize().multiplyScalar(5.2); b.vel.set(tmp.x, 6.8, tmp.z);   // hop toward you
+        if (b.bounces > 5) gone = true;
+      }
+      b.marker.position.set(p.x, 0.05, p.z); b.marker.visible = b.state === 'fall'; b.marker.scale.setScalar(Math.max(0.3, 1 - (p.y - 0.75) / 18));
+      const d = Math.hypot(p.x - player.pos.x, p.y - (player.pos.y + 0.9), p.z - player.pos.z);
+      if ((player.spin > 0 || invincible > 0) && d < 2.3) { b.state = 'return'; b.marker.visible = false; sfx('deflect'); toast('NICE HIT!'); }
+      else if (d < 1.15) { hit(); spawnBoom(p, 0.8); gone = true; }
+      if (p.y < -12 || p.z > z0 + 10) gone = true;
+    }
+    if (gone) { scene.remove(b.mesh); scene.remove(b.marker); const at = s.boulders.indexOf(b); if (at >= 0) s.boulders.splice(at, 1); }
+  }
+  // ---- Cortex himself: throws his arm up for each bomb, rocks when stunned ----
+  c.root.getWorldPosition(hitPt);
+  P.aim = 0.45; P.aimDir.copy(idleAim); P.lever = 0;
+  if (s.throwing > 0) { const k = Math.sin(Math.min(1, s.throwing / 0.6) * Math.PI); P.aim = 0.45 + 0.55 * k; P.aimDir.copy(idleAim).lerp(upAim, k).normalize(); }
+  P.headYaw = s.stun > 0 ? Math.sin(s.t * 18) * 0.9 : c.laugh > 0 ? Math.sin(s.t * 24) * 0.45 : Math.atan2(player.pos.x - hitPt.x, 14) * 0.9;
+  P.headTilt = s.stun > 0 ? Math.sin(s.t * 13) * 0.3 : Math.sin(s.t * 1.3) * 0.06; P.nod = c.laugh > 0 ? Math.sin(s.t * 24) * 0.25 : Math.sin(s.t * 2) * 0.04;
+  P.legSwing = s.stun > 0 ? Math.sin(s.t * 14) * 0.7 : Math.sin(s.t * 3) * 0.3;
+  c.root.rotation.set(0, 0, 0); c.root.position.set(0, 0.45 + Math.sin(s.t * 4) * 0.05, 0);
+  if (c.model) c.model.scale.setScalar(c.baseScale);
+  if (c.anim) { c.anim.update(P, s.t); c.gun.position.copy(c.anim.out.tip); c.gun.quaternion.setFromUnitVectors(SPACE_SHOT_Z, c.anim.out.dir); }
+  c.root.visible = s.flash > 0 ? Math.floor(s.t * 20) % 2 === 0 : true;
+}
+
 // ---------- 3-D world map, shown between stages ----------
 // An island with a winding path through the four stages. Crash runs from the stage you just beat to the next one while the camera follows.
 const MAP_X = -3000;                         // the map lives far away from the levels
 const MAP_NODES = [
   { name: 'LEVEL 1', sub: 'THE JUNGLE', p: [-50, -18] }, { name: 'RIPPER ROO', sub: 'BOSS FIGHT', p: [-20, 10] },
   { name: 'LEVEL 2', sub: 'BOULDER CHASE', p: [22, -14] }, { name: 'DR. NEO CORTEX', sub: 'BOSS FIGHT', p: [52, 18] },
-  { name: 'LEVEL 3', sub: 'THE TEMPLE', p: [90, -8] }, { name: 'LEVEL 4', sub: 'FIRE CHASE', p: [124, 20] }, { name: 'UKA UKA', sub: 'FINAL BOSS', p: [156, -10] },
+  { name: 'LEVEL 3', sub: 'THE TEMPLE', p: [90, -8] }, { name: 'LEVEL 4', sub: 'FIRE CHASE', p: [124, 20] }, { name: 'UKA UKA', sub: 'BOSS FIGHT', p: [156, -10] }, { name: 'DR. NEO CORTEX', sub: 'FINAL FINAL BOSS', p: [172, 10] },
 ];
 const mapRoot = new THREE.Group(); mapRoot.position.x = MAP_X; mapRoot.visible = false; scene.add(mapRoot);
 const mapSt = { active: false, finishing: false, t: 0, from: 0, to: 1, title: '', next: null, path: [], idx: [], spacing: 1, dots: [], rings: [], clouds: [], labels: [], saved: null, dir: new THREE.Vector3(0, 0, 1), s: 0 };
@@ -1543,7 +1699,7 @@ function labelSprite(text, sub) {
 }
 function buildMap() {
   // the path
-  const pts = [[-50, -18], [-44, -6], [-34, 4], [-20, 10], [-6, 16], [6, 6], [14, -6], [22, -14], [34, -16], [46, -8], [50, 4], [52, 18], [62, 12], [74, 2], [90, -8], [102, 2], [110, 16], [124, 20], [138, 12], [146, -2], [156, -10]];
+  const pts = [[-50, -18], [-44, -6], [-34, 4], [-20, 10], [-6, 16], [6, 6], [14, -6], [22, -14], [34, -16], [46, -8], [50, 4], [52, 18], [62, 12], [74, 2], [90, -8], [102, 2], [110, 16], [124, 20], [138, 12], [146, -2], [156, -10], [164, -2], [172, 10]];
   const curve = new THREE.CatmullRomCurve3(pts.map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'catmullrom', 0.5);
   const N = 340, path = curve.getSpacedPoints(N); mapSt.path = path; mapSt.spacing = curve.getLength() / N;
   mapSt.idx = MAP_NODES.map(n => { let best = 0, bd = 1e9; path.forEach((q, i) => { const d = Math.hypot(q.x - n.p[0], q.z - n.p[1]); if (d < bd) { bd = d; best = i; } }); return best; });
@@ -1596,6 +1752,12 @@ function buildMap() {
     }
     if (i === 5) {                                                                                      // pillars of fire
       for (let k = 0; k < 4; k++) { const dx = 4 + k * 3, c = new THREE.Mesh(new THREE.BoxGeometry(1.3, 4 + (k % 2) * 2, 1.3), TW.wall[0]); c.position.set(dx, 2 + (k % 2), -2); g.add(c); const f = new THREE.Sprite(TW.flame); f.scale.set(3.4, 4.4, 1); f.position.set(dx, 6.6 + (k % 2) * 2, -2); g.add(f); }
+    }
+    if (i === 7) {                                                                                      // a launch pad with a rocket
+      const pad = new THREE.Mesh(new THREE.CylinderGeometry(5, 5.5, 0.6, 12), new THREE.MeshLambertMaterial({ color: 0x4a4e5e })); pad.position.set(5, 0.3, 0); g.add(pad);
+      const rk = new THREE.Mesh(new THREE.CylinderGeometry(1.1, 1.5, 8, 10), new THREE.MeshLambertMaterial({ color: 0xd8dce8 })); rk.position.set(5, 4.6, 0); g.add(rk);
+      const nose = new THREE.Mesh(new THREE.ConeGeometry(1.1, 2.6, 10), new THREE.MeshLambertMaterial({ color: 0xdd3030 })); nose.position.set(5, 10.2, 0); g.add(nose);
+      for (const a of [0, 2.1, 4.2]) { const fin = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.4, 1.6), new THREE.MeshLambertMaterial({ color: 0xdd3030 })); fin.position.set(5 + Math.cos(a) * 1.6, 1.8, Math.sin(a) * 1.6); fin.rotation.y = -a; g.add(fin); }
     }
     if (i === 6) {                                                                                      // Uka Uka's dark temple, with a giant mask above the door
       const py = new THREE.Mesh(new THREE.ConeGeometry(9, 11, 4), new THREE.MeshLambertMaterial({ color: 0x3a2a34, flatShading: true })); py.position.set(6, 5.5, -3); py.rotation.y = Math.PI / 4; g.add(py);
@@ -1854,11 +2016,12 @@ function update(dt) {
   if (cortex.active) updateCortex(dt);
   if (temple.active) updateTemple(dt);
   if (uka.active) updateUka(dt);
+  if (space.active) updateSpace(dt);
   if (temple.active || chase2.active || uka.active) animateTorches();
   // fall
   if (player.pos.y < -10) die();
   // finish
-  if (state === 'play' && !boss.active && !chase.active && !cortex.active && !temple.active && !chase2.active && !uka.active && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) startBoss();   // level done -> boss fight
+  if (state === 'play' && !boss.active && !chase.active && !cortex.active && !temple.active && !chase2.active && !uka.active && !space.active && finish.position.distanceTo(tmp.set(player.pos.x, player.pos.y + 1, player.pos.z)) < 1.8) startBoss();   // level done -> boss fight
 }
 
 // ---------- render loop ----------
@@ -1930,15 +2093,16 @@ function frame() {
   if (mapSt.active) mapCamera(dt);
   else {
     // camera per stage: normal / boss arena / chase (in front of Crash, looking back at the boulder) / Cortex's lab
-    const cam = chase.active || chase2.active ? { dx: 0.4, dy: 7.4, dz: 13, ly: 0.8, lz: -3 } : uka.active ? { dx: 0.4, dy: 6.5, dz: 12, ly: 4.2, lz: -9 } : boss.active ? { dx: 0.4, dy: 5.8, dz: 11, ly: 1.8, lz: -9 } : cortex.active ? { dx: 0.4, dy: 6, dz: 11, ly: 3.2, lz: -9 } : { dx: 0.5, dy: 4.8, dz: 9.5, ly: 1.2, lz: -4 };
+    const cam = chase.active || chase2.active ? { dx: 0.4, dy: 7.4, dz: 13, ly: 0.8, lz: -3 } : space.active ? { dx: 0.4, dy: 6.5, dz: 11.5, ly: 3, lz: -9 } : uka.active ? { dx: 0.4, dy: 6.5, dz: 12, ly: 4.2, lz: -9 } : boss.active ? { dx: 0.4, dy: 5.8, dz: 11, ly: 1.8, lz: -9 } : cortex.active ? { dx: 0.4, dy: 6, dz: 11, ly: 3.2, lz: -9 } : { dx: 0.5, dy: 4.8, dz: 9.5, ly: 1.2, lz: -4 };
     camTarget.set(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.dy, player.pos.z + cam.dz);
     if (camSnap) { camera.position.copy(camTarget); camSnap = false; }
     else camera.position.lerp(camTarget, 1 - Math.exp(-6 * dt));
     camera.lookAt(player.pos.x * cam.dx, Math.max(player.pos.y, -2) + cam.ly, player.pos.z + cam.lz);
   }
 
+  if (space.active) space.stars.position.copy(camera.position);
   renderer.render(scene, camera);
 }
 camera.position.set(0, 4.2, 8.5);
-window.__game = { temple, chase2, uka, fireJets, crumbles, torches, startTemple, enterTemple, startChase2, enterChase2, startUka, enterUka, ukaHit, fireUkaShot, TEMPLE, UKA, CHASE2, scene, mapH, mapSt, enterMap, skipMap, retry: () => retryStage, cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
+window.__game = { space, enterSpace, startSpace, spaceHit, spawnBoulder, launchBomb, temple, chase2, uka, fireJets, crumbles, torches, startTemple, enterTemple, startChase2, enterChase2, startUka, enterUka, ukaHit, fireUkaShot, TEMPLE, UKA, CHASE2, scene, mapH, mapSt, enterMap, skipMap, retry: () => retryStage, cortexHit, fireBlast, goldMat, chase, cortex, startChase, startCortex, audioStatus, sfx, finishPos: () => finish.position.toArray(), boss, spawnRock, startBoss, aku, camera, modelHolder, movers, uiLock: () => uiLockUntil, layout: () => LAYOUT, setCheckpoint: (x, y, z) => checkpoint.set(x, y, z), solids, spikes, setLives: n => { lives = n; updateHud(); }, masks: () => masks, giveMasks: n => { for (let i = 0; i < n; i++) { if (masks >= 2) { masks = 0; invincible = INVINCIBLE_TIME; } else masks++; } updateHud(); }, player, anim: () => animator, enemies, crates, state: () => state, setState: s => { state = s; } };
 frame();

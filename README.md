@@ -44,16 +44,19 @@ After Ripper Roo, a giant boulder chases you down a long track. You run toward t
 He hovers on a platform and fires ray-gun zaps at you (6 lives on the health bar). Green zaps just hurt, so dodge them. Every third zap is golden (his gun glows gold first): spin into a golden zap to knock it back at him. At half health he pulls a lever: four platforms rise out of the floor, then the floor (a trap door) drops away, so jump onto a platform before it opens. In stage two he fires faster, and platforms collapse one at a time, so keep moving.
 
 ## World 2: the temples
-Beating Dr. Neo Cortex ends World 1 and opens the burning temples: a dusk sky, lava below, carved stone and torches. The game is won after the final boss of World 2.
+Beating Dr. Neo Cortex ends World 1 and opens the burning temples: a dusk sky, lava below, carved stone and torches. After Uka Uka there is one more fight, and the game is won after that.
 - **Level 3, the temple** (a long platformer): fire jets that glow red, then burst (the side jets and the middle jet take turns), crumbling stone slabs over the lava that shake and drop shortly after you land (they grow back), stepping-stone pillars, spike halls, a hill with jets on top, enemies, and plenty of checkpoint, Aku Aku and life crates.
 - **Level 4, the fire chase**: like the boulder chase, but a tall wall of fire chases you toward the camera. Aku Aku shoves it back once.
 - **Final boss: Uka Uka** (6 lives): a huge floating mask. He spits **fireballs**: jump over them (spinning does not help). Every third shot is a **blue spirit orb** (he glows blue first): spin into it to knock it back and he loses a life. At half health the floor catches fire: lanes of flame burst across it in stage two, so keep moving and jump the fire. He shoots faster, and sometimes twice.
+
+## The final final boss: Dr. Neo Cortex in space
+After Uka Uka, Dr. Neo Cortex is back, on a hover disc above a floating field of tiles in space (6 lives). He lobs **bombs** that land on a whole **row** of tiles: the row flashes red first, so get off it (the first two rows of tiles at the start are always safe). **Small boulders** drop from the sky (a red circle shows where) and then bounce toward you: **spin** into one to knock it back at Cortex, which is the only way to hurt him. At half health he throws faster and sometimes two bombs at once. Falling off the tiles costs a life.
 
 ## Collision
 Crash's collision is a flat disc at his feet (like the original trilogy), not a box. Corners are round, so he slides around crates, walls and ledge corners instead of catching on them. He can still stand with his centre slightly past a platform edge.
 
 ## Game Over
-If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, the Dr. Neo Cortex fight, the temple, the fire chase, or the Uka Uka fight) with 5 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
+If you run out of lives, the button restarts the stage you were on (level 1, the Ripper Roo fight, the boulder chase, the Dr. Neo Cortex fight, the temple, the fire chase, the Uka Uka fight, or the fight in space) with 5 lives, instead of sending you back to the start of the game. After beating the whole game, Play Again starts from level 1.
 
 ## Start sequence
 The game opens with "Retro Goose presents" (your hand-drawn logo), then the game logo and a PLAY button, then the world map with a START button; START teleports Crash to level 1. Tap the logo to skip the intro. Add `?nomap` or `?nointro` to skip it.
