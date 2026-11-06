@@ -29,3 +29,6 @@ style=re.search(r'<style>.*?</style>',h,re.S).group(0)
 body=re.search(r'<body>(.*)</body>',h,re.S).group(1)
 open('dist/artifact.html','w').write('<title>Crash Bandicoot Adventure</title>\n'+style+'\n'+body)
 PY
+
+# copy for GitHub Pages (Settings > Pages > deploy from a branch > /docs)
+cp dist/game.html docs/index.html
