@@ -41,9 +41,11 @@ scene.fog = new THREE.Fog(0x4f7a52, 22, 85);
 const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 110);
 function onResize() {
   renderer.setSize(innerWidth, innerHeight);
-  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  camera.aspect = innerWidth / innerHeight;
+  camera.fov = 60 + Math.min(1, Math.max(0, (1.5 - camera.aspect) / 1.0)) * 22;   // tall (portrait) screens: widen the view so the track doesn't get cramped
+  camera.updateProjectionMatrix();
 }
-addEventListener('resize', onResize);
+addEventListener('resize', onResize); onResize();
 addEventListener('orientationchange', () => setTimeout(onResize, 250));   // iPad reports the new size a moment late
 const hemi = new THREE.HemisphereLight(0xe6f2c8, 0x6a4a28, 1.1); scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xffe2a8, 1.5);
